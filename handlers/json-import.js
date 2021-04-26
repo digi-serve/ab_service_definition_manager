@@ -399,7 +399,12 @@ ${strErr}
             cb();
          })
          .catch((err) => {
-            req.logError("ERROR:", err);
+            // req.logError("ERROR:", err);
+            req.notify.developer(err, {
+               context:
+                  "Service:definition_manager.json-import: Error initializing ABFactory",
+               req,
+            });
             cb(err);
          });
    },

@@ -396,6 +396,7 @@ ${strErr}
             });
          })
          .then(() => {
+            req.servicePublish("definition.stale", {});
             cb();
          })
          .catch((err) => {

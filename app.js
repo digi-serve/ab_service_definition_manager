@@ -5,6 +5,14 @@
 const AB = require("ab-utils");
 
 var controller = AB.controller("definition_manager");
-// controller.afterStartup((cb)=>{ return cb(/* err */) });
-// controller.beforeShutdown((cb)=>{ return cb(/* err */) });
+controller.afterStartup((req, cb) => {
+   // We need to kick start our publisher creating broadcast messages.
+   // We just have to send 1 message, it doesn't even have to have
+   // a correct TenantID ...
+   req.servicePublish("definition.stale", {});
+
+   // nothing to wait for so:
+   return cb(/* err */);
+});
+// controller.beforeShutdown((req, cb)=>{ return cb(/* err */) });
 controller.init();

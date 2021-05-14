@@ -52,15 +52,21 @@ module.exports = {
       // get the AB for the current tenant
       ABBootstrap.init(req)
          .then((AB) => { // eslint-disable-line
-            // access your config settings if you need them:
+            
 
-            // req.log(" ... just testing ...");
-
-            // cb(null, { status: "success" });
+            var thisKnex = AB.Knex.connection();
+            // {Knex}
+            // Access the Knex builder and provide it to our operations.
 
             var data = req.param("json");
+
             var hashSaved = {};
+            // {obj} /* def.id : def */
+            // a hash of all the definitions we have saved in the first step
+
             var allObjects = [];
+            // {array ABObject}
+            // an array of all the ABObjects we are importing.
 
             var allErrors = [];
             // {array} allErrors
@@ -81,6 +87,7 @@ module.exports = {
                            (d) =>
                               d &&
                               [
+                                 "query",
                                  "object",
                                  "field",
                                  "index",
@@ -180,7 +187,7 @@ ${err.toString()}
                            (object.connectFields() || []).forEach((field) => {
                               allConnections.push(
                                  field
-                                    .migrateCreate(req, AB.Knex.connection())
+                                    .migrateCreate(req, thisKnex)
                                     .catch((err) => {
                                        var strErr = err.toString();
                                        if (
@@ -220,7 +227,7 @@ ${strErr}
                            );
 
                            field
-                              .migrateCreate(req, AB.Knex.connection())
+                              .migrateCreate(req, thisKnex)
                               .then(() => {
                                  seqRetry(cb);
                               })
@@ -286,7 +293,7 @@ ${strErr}
                         if (indx) {
                            allUpdates.push(
                               index
-                                 .migrateCreate(req, AB.Knex.connection())
+                                 .migrateCreate(req, thisKnex)
                                  .catch((err) => {
                                     req.notify.developer(err, {
                                        context: "index.migrateCreate()",
@@ -299,7 +306,7 @@ ${strErr}
 
                      function refreshObject(object) {
                         // var knex = ABMigration.connection(object.connName);
-                        var knex = AB.Knex.connection();
+                        var knex = thisKnex;
                         var tableName = object.dbTableName(true);
 
                         if (knex.$$objection && knex.$$objection.boundModels) {
@@ -318,6 +325,37 @@ ${strErr}
                            refreshObject(object);
                         });
                      });
+                  })
+                  .then(() => {
+                     ///
+                     /// Now Queries
+                     ///
+                     var allQueries = [];
+                     (data.definitions || [])
+                        .filter((d) => d && d.type == "query")
+                        .forEach((q) => {
+                           var query = AB.queryNew(q.json);
+                           allQueries.push(query);
+                        });
+
+                     var allMigrates = [];
+                     (allQueries || []).forEach((query) => {
+                        allMigrates.push(
+                           query.migrateCreate(req, thisKnex).catch((err) => {
+                              allErrors.push({
+                                 context: "developer",
+                                 message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 3: creating QUERIES:
+ABMigration.createQuery() error:
+${err.toString()}
+>>>>>>>>>>>>>>>>>>>>>>`,
+                                 error: err,
+                              });
+                           })
+                        );
+                     });
+
+                     return Promise.all(allMigrates);
                   })
                   .then(() => {
                      // now save all the rest:

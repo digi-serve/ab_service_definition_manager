@@ -51,9 +51,7 @@ module.exports = {
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
-         .then((AB) => { // eslint-disable-line
-            
-
+         .then((AB) => {
             var thisKnex = AB.Knex.connection();
             // {Knex}
             // Access the Knex builder and provide it to our operations.

@@ -57,6 +57,7 @@ module.exports = {
             // Access the Knex builder and provide it to our operations.
 
             var data = req.param("json");
+            data.files = data.files || [];
 
             var hashSaved = {};
             // {obj} /* def.id : def */
@@ -70,6 +71,30 @@ module.exports = {
             // {array} allErrors
             // an array of error messages related to this json-import run.
             // these will be displayed in a block at the end.
+
+            /**
+             * @function refreshObject()
+             * a helper fn to reset the knex bound model definitions with
+             * the current definition of the given model.  We need to do
+             * this as we have taken off fields and are periodically adding
+             * them back on during our import.
+             * @param {ABObject} object
+             *        The ABObject definition we are recreating.
+             */
+            function refreshObject(object) {
+               // var knex = ABMigration.connection(object.connName);
+               var knex = thisKnex;
+               var tableName = object.dbTableName(true);
+
+               if (knex.$$objection && knex.$$objection.boundModels) {
+                  // delete knex.$$objection.boundModels[tableName];
+
+                  // FIX : Knex Objection v.1.1.8
+                  knex.$$objection.boundModels.delete(
+                     tableName + "_" + object.modelName()
+                  );
+               }
+            }
 
             return new Promise((resolve, reject) => {
                Promise.resolve()
@@ -103,15 +128,13 @@ module.exports = {
                                     })
                                  )
                                  .catch((err) => {
-                                    //                            console.log(`>>>>>>>>>>>>>>>>>>>>>>
-                                    // ${err.toString()}
-                                    // >>>>>>>>>>>>>>>>>>>>>>`);
+                                    // if that entry already existed
 
                                     if (
                                        err.toString().indexOf("ER_DUP_ENTRY") >
                                        -1
                                     ) {
-                                       // console.log("===> trying an update instead.");
+                                       // trying an update instead.");
                                        return req.retry(() =>
                                           AB.definitionUpdate(req, def.id, def)
                                        );
@@ -147,6 +170,8 @@ module.exports = {
                      (allObjects || []).forEach((object) => {
                         object.stashConnectFields(); // effectively ignores connectFields
                         object.stashIndexFieldsWithConnection();
+                        // NOTE: keep .stashIndexNormal() after .stashIndexFieldsWithConnection()
+                        object.stashIndexNormal();
 
                         allMigrates.push(
                            object.migrateCreate(req).catch((err) => {
@@ -164,6 +189,45 @@ ${err.toString()}
                      });
 
                      return Promise.all(allMigrates);
+                  })
+                  .then(() => {
+                     // make sure all fields are created before we start with
+                     // our Indexes
+
+                     req.log("::: IMPORT : Normal Index Imports");
+
+                     var allIndexes = [];
+                     var allUpdates = [];
+
+                     (allObjects || []).forEach((object) => {
+                        var stashed = object.getStashedIndexNormals();
+                        if (stashed && stashed.length > 0) {
+                           allIndexes = allIndexes.concat(stashed);
+                           object.applyIndexNormal();
+                        }
+                     });
+
+                     (allIndexes || []).forEach((indx) => {
+                        if (indx) {
+                           allUpdates.push(
+                              index
+                                 .migrateCreate(req, thisKnex)
+                                 .catch((err) => {
+                                    req.notify.developer(err, {
+                                       context: "index.migrateCreate()",
+                                       indx: indx.toObj(),
+                                    });
+                                 })
+                           );
+                        }
+                     });
+
+                     return Promise.all(allUpdates).then(() => {
+                        // Now make sure knex has the latest object data
+                        (allObjects || []).forEach((object) => {
+                           refreshObject(object);
+                        });
+                     });
                   })
                   .then(() => {
                      // Now that all the tables are created, we can go back
@@ -302,20 +366,20 @@ ${strErr}
                         }
                      });
 
-                     function refreshObject(object) {
-                        // var knex = ABMigration.connection(object.connName);
-                        var knex = thisKnex;
-                        var tableName = object.dbTableName(true);
+                     // function refreshObject(object) {
+                     //    // var knex = ABMigration.connection(object.connName);
+                     //    var knex = thisKnex;
+                     //    var tableName = object.dbTableName(true);
 
-                        if (knex.$$objection && knex.$$objection.boundModels) {
-                           // delete knex.$$objection.boundModels[tableName];
+                     //    if (knex.$$objection && knex.$$objection.boundModels) {
+                     //       // delete knex.$$objection.boundModels[tableName];
 
-                           // FIX : Knex Objection v.1.1.8
-                           knex.$$objection.boundModels.delete(
-                              tableName + "_" + object.modelName()
-                           );
-                        }
-                     }
+                     //       // FIX : Knex Objection v.1.1.8
+                     //       knex.$$objection.boundModels.delete(
+                     //          tableName + "_" + object.modelName()
+                     //       );
+                     //    }
+                     // }
 
                      return Promise.all(allUpdates).then(() => {
                         // Now make sure knex has the latest object data
@@ -397,6 +461,39 @@ ${strErr}
                         }
                      });
                      return Promise.all(allSaves);
+                  })
+                  .then(() => {
+                     // now process the default Files included in the import.
+                     var fileKeys = Object.keys(data.files);
+                     if (fileKeys.length == 0) return;
+
+                     req.log("::: IMPORT : Saving Files");
+
+                     var allFiles = [];
+                     fileKeys.forEach((key) => {
+                        var file = data.files[key];
+
+                        allFiles.push(
+                           new Promise((resolve, reject) => {
+                              req.serviceRequest(
+                                 "file_processor.file_import",
+                                 {
+                                    uuid: key,
+                                    entry: file.meta,
+                                    contents: file.contents,
+                                 },
+                                 (err) => {
+                                    if (err) {
+                                       return reject(err);
+                                    }
+                                    resolve();
+                                 }
+                              );
+                           })
+                        );
+                     });
+
+                     return Promise.all(allFiles);
                   })
                   .then(() => {
                      console.log(":::");

@@ -1,17 +1,17 @@
 ##
-## digiserve/ab-definition-manager:develop
+## digiserve/ab-definition-manager:master
 ##
 ## This is our microservice for our AppBuilder Definitions.
 ##
 ## Docker Commands:
 ## ---------------
-## $ docker build -t digiserve/ab-definition-manager:develop .
-## $ docker push digiserve/ab-definition-manager:develop
+## $ docker build -t digiserve/ab-definition-manager:master .
+## $ docker push digiserve/ab-definition-manager:master
 ##
 
-FROM digiserve/service-cli:develop
+FROM digiserve/service-cli:master
 
-RUN git clone --recursive https://github.com/appdevdesigns/ab_service_definition_manager.git app && cd app && git checkout develop && git submodule update --recursive && npm install
+RUN git clone --recursive https://github.com/appdevdesigns/ab_service_definition_manager.git app && cd app && git submodule update --recursive && npm install
 
 WORKDIR /app
 

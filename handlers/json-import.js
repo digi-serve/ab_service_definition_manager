@@ -210,14 +210,12 @@ ${err.toString()}
                      (allIndexes || []).forEach((indx) => {
                         if (indx) {
                            allUpdates.push(
-                              index
-                                 .migrateCreate(req, thisKnex)
-                                 .catch((err) => {
-                                    req.notify.developer(err, {
-                                       context: "index.migrateCreate()",
-                                       indx: indx.toObj(),
-                                    });
-                                 })
+                              indx.migrateCreate(req, thisKnex).catch((err) => {
+                                 req.notify.developer(err, {
+                                    context: "index.migrateCreate()",
+                                    indx: indx.toObj(),
+                                 });
+                              })
                            );
                         }
                      });

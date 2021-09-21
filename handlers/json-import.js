@@ -159,7 +159,7 @@ module.exports = {
                         });
                   })
                   .then(() => {
-                     // now load all the Objects, and do a .migrageCreate() on them:
+                     // now load all the Objects, and do a .migrateCreate() on them:
                      // NOTE: there is a timing issue with ABFieldConnect fields.
                      // We have to 1st, create ALL the object tables before we can
                      // create connections between them.

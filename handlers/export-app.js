@@ -87,7 +87,7 @@ module.exports = {
                var ids = [];
                app.exportIDs(ids);
                ids.forEach((id) => {
-                  dataHash[id] = AB.definitionByID(id);
+                  dataHash[id] = AB.definitionByID(id, true);
                });
 
                // parse each entry in our dataHash & store it in our

@@ -74,7 +74,7 @@ module.exports = {
                   var ids = [];
                   app.exportIDs(ids);
                   ids.forEach((id) => {
-                     dataHash[id] = AB.definitionByID(id);
+                     dataHash[id] = AB.definitionByID(id, true);
                   });
                });
 

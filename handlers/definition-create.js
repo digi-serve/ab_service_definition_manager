@@ -65,6 +65,16 @@ module.exports = {
 
             req.log(def);
 
+            // Allow these Entities to set their default values
+            switch (def.type) {
+               case "application":
+                  def.json = AB.applicationNew(def.json).toObj();
+                  break;
+               case "object":
+                  def.json = AB.objectNew(def.json).toObj();
+                  break;
+            }
+
             var fullDefinition = null;
             // {obj} the {ABDefinition} data returned from the DB.
 

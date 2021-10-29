@@ -110,9 +110,9 @@ module.exports = {
                            (d) =>
                               d &&
                               [
-                                 "query",
-                                 "object",
                                  "field",
+                                 "object",
+                                 "query",
                                  "index",
                                  "application",
                               ].indexOf(d.type) > -1

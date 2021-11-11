@@ -217,7 +217,7 @@ ${err.toString()}
                            }
                         }
 
-                        var numParallel = 5;
+                        var numParallel = 2;
                         // {int} the number of objects to be processing in parallel
 
                         var numProcessing = 0;
@@ -295,6 +295,11 @@ ${err.toString()}
                         object.applyConnectFields(); // reapply connectFields
                      });
 
+                     // NOTE: in process of moving into req.retry()
+                     // and making field.migrateCreate() perform the retry
+                     // there.
+                     // once that happens, these errors will no longer show
+                     // up here:
                      var errorLOCK = [
                         "ER_LOCK_DEADLOCK",
                         "ER_LOCK_WAIT_TIMEOUT",

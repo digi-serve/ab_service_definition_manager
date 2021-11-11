@@ -173,22 +173,75 @@ module.exports = {
                         // NOTE: keep .stashIndexNormal() after .stashIndexFieldsWithConnection()
                         object.stashIndexNormal();
 
-                        allMigrates.push(
-                           object.migrateCreate(req).catch((err) => {
-                              allErrors.push({
-                                 context: "developer",
-                                 message: `>>>>>>>>>>>>>>>>>>>>>>
+                        allMigrates.push(object);
+                        //                         allMigrates.push(
+                        //                            object.migrateCreate(req).catch((err) => {
+                        //                               allErrors.push({
+                        //                                  context: "developer",
+                        //                                  message: `>>>>>>>>>>>>>>>>>>>>>>
+                        // Pass 1: creating objects WITHOUT connectFields:
+                        // ABMigration.createObject() error:
+                        // ${err.toString()}
+                        // >>>>>>>>>>>>>>>>>>>>>>`,
+                        //                                  error: err,
+                        //                               });
+                        //                            })
+                        //                         );
+                     });
+
+                     // return Promise.all(allMigrates);
+                     // {fix} attempt to avoid ER_LOCK_WAIT_TIMEOUT errors by
+                     // slowing down the number of parallel requests:
+                     return new Promise((resolve /* , reject */) => {
+                        function doOne(cb) {
+                           if (allMigrates.length == 0) {
+                              cb();
+                           } else {
+                              var obj = allMigrates.shift();
+                              obj.migrateCreate(req)
+                                 .then(() => {
+                                    doOne(cb);
+                                 })
+                                 .catch((err) => {
+                                    allErrors.push({
+                                       context: "developer",
+                                       message: `>>>>>>>>>>>>>>>>>>>>>>
 Pass 1: creating objects WITHOUT connectFields:
 ABMigration.createObject() error:
 ${err.toString()}
 >>>>>>>>>>>>>>>>>>>>>>`,
-                                 error: err,
-                              });
-                           })
-                        );
-                     });
+                                       error: err,
+                                    });
+                                    doOne(cb);
+                                 });
+                           }
+                        }
 
-                     return Promise.all(allMigrates);
+                        var numParallel = 5;
+                        // {int} the number of objects to be processing in parallel
+
+                        var numProcessing = 0;
+                        // {int} the # currently running.
+
+                        function endHandler(err) {
+                           if (err) {
+                              // ok, we should have noted the errors in allErrors
+                              // so we continue on here.
+                           }
+                           numProcessing--;
+
+                           // if all the objects have completed, then:
+                           if (numProcessing < 1) {
+                              resolve();
+                           }
+                        }
+
+                        // Start up the number of Objects we want in Parallel
+                        for (var i = 1; i <= numParallel; i++) {
+                           numProcessing++;
+                           doOne(endHandler);
+                        }
+                     });
                   })
                   .then(() => {
                      // make sure all fields are created before we start with
@@ -242,6 +295,11 @@ ${err.toString()}
                         object.applyConnectFields(); // reapply connectFields
                      });
 
+                     var errorLOCK = [
+                        "ER_LOCK_DEADLOCK",
+                        "ER_LOCK_WAIT_TIMEOUT",
+                     ];
+
                      (allObjects || []).forEach((object) => {
                         if (!(object instanceof AB.Class.ABObjectExternal)) {
                            (object.connectFields() || []).forEach((field) => {
@@ -250,10 +308,12 @@ ${err.toString()}
                                     .migrateCreate(req, thisKnex)
                                     .catch((err) => {
                                        var strErr = err.toString();
-                                       if (
-                                          strErr.indexOf("ER_LOCK_DEADLOCK") !=
-                                          -1
-                                       ) {
+                                       var isLock = false;
+                                       errorLOCK.forEach((e) => {
+                                          if (strErr.indexOf(e) != -1)
+                                             isLock = true;
+                                       });
+                                       if (isLock) {
                                           allRetries.push(field);
                                           return;
                                        }
@@ -293,7 +353,11 @@ ${strErr}
                               })
                               .catch((err) => {
                                  var strErr = err.toString();
-                                 if (strErr.indexOf("ER_LOCK_DEADLOCK") != -1) {
+                                 var isLock = false;
+                                 errorLOCK.forEach((e) => {
+                                    if (strErr.indexOf(e) != -1) isLock = true;
+                                 });
+                                 if (isLock) {
                                     field._deadlockRetry++;
                                     if (field._deadlockRetry < 4) {
                                        allRetries.push(field);

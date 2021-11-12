@@ -72,6 +72,26 @@ module.exports = {
             // an array of error messages related to this json-import run.
             // these will be displayed in a block at the end.
 
+            /**
+             * @function migrateCreateSequential()
+             * a helper fn to ensure the given items perform their
+             * .migrateCreate() sequentially.
+             * NOTE: this was done to prevent errors related to performing
+             * too many operations in parallel.
+             * @param {array} allItems
+             *        An array of objects that need to perform a .migrateCreate()
+             * @param {int} numParallel
+             *        How many of these objects do you want to attempt to
+             *        process in parallel.
+             *        1 = purely sequential
+             * @param {fn} onError
+             *        An error handler in case the .migrateCreate() fn returns
+             *        an error.
+             *        NOTE: this will not stop the process from continuing on.
+             * @return {Promise}
+             */
+            // NOTE: keep this INSIDE the context of our fn() handler.
+            //       we reference the  req, and thisKnex variables.
             function migrateCreateSequential(allItems, numParallel, onError) {
                return new Promise((resolve /*, reject */) => {
                   function doOne(cb) {
@@ -219,22 +239,8 @@ module.exports = {
                         object.stashIndexNormal();
 
                         allMigrates.push(object);
-                        //                         allMigrates.push(
-                        //                            object.migrateCreate(req).catch((err) => {
-                        //                               allErrors.push({
-                        //                                  context: "developer",
-                        //                                  message: `>>>>>>>>>>>>>>>>>>>>>>
-                        // Pass 1: creating objects WITHOUT connectFields:
-                        // ABMigration.createObject() error:
-                        // ${err.toString()}
-                        // >>>>>>>>>>>>>>>>>>>>>>`,
-                        //                                  error: err,
-                        //                               });
-                        //                            })
-                        //                         );
                      });
 
-                     // return Promise.all(allMigrates);
                      // {fix} attempt to avoid ER_LOCK_WAIT_TIMEOUT errors by
                      // slowing down the number of parallel requests:
                      return migrateCreateSequential(
@@ -253,57 +259,6 @@ ${err.toString()}
                            });
                         }
                      );
-
-                     //                      return new Promise((resolve /* , reject */) => {
-                     //                         function doOne(cb) {
-                     //                            if (allMigrates.length == 0) {
-                     //                               cb();
-                     //                            } else {
-                     //                               var obj = allMigrates.shift();
-                     //                               obj.migrateCreate(req)
-                     //                                  .then(() => {
-                     //                                     doOne(cb);
-                     //                                  })
-                     //                                  .catch((err) => {
-                     //                                     allErrors.push({
-                     //                                        context: "developer",
-                     //                                        message: `>>>>>>>>>>>>>>>>>>>>>>
-                     // Pass 1: creating objects WITHOUT connectFields:
-                     // ABMigration.createObject() error:
-                     // ${err.toString()}
-                     // >>>>>>>>>>>>>>>>>>>>>>`,
-                     //                                        error: err,
-                     //                                     });
-                     //                                     doOne(cb);
-                     //                                  });
-                     //                            }
-                     //                         }
-
-                     //                         var numParallel = 2;
-                     //                         // {int} the number of objects to be processing in parallel
-
-                     //                         var numProcessing = 0;
-                     //                         // {int} the # currently running.
-
-                     //                         function endHandler(err) {
-                     //                            if (err) {
-                     //                               // ok, we should have noted the errors in allErrors
-                     //                               // so we continue on here.
-                     //                            }
-                     //                            numProcessing--;
-
-                     //                            // if all the objects have completed, then:
-                     //                            if (numProcessing < 1) {
-                     //                               resolve();
-                     //                            }
-                     //                         }
-
-                     //                         // Start up the number of Objects we want in Parallel
-                     //                         for (var i = 1; i <= numParallel; i++) {
-                     //                            numProcessing++;
-                     //                            doOne(endHandler);
-                     //                         }
-                     //                      });
                   })
                   .then(() => {
                      // make sure all fields are created before we start with
@@ -312,7 +267,6 @@ ${err.toString()}
                      req.log("::: IMPORT : Normal Index Imports");
 
                      var allIndexes = [];
-                     var allUpdates = [];
 
                      (allObjects || []).forEach((object) => {
                         var stashed = object.getStashedIndexNormals();
@@ -322,27 +276,8 @@ ${err.toString()}
                         }
                      });
 
+                     // clear out any null entries
                      allIndexes = allIndexes.filter((i) => i);
-                     // (allIndexes || []).forEach((indx) => {
-                     //    if (indx) {
-                     //       allUpdates.push(indx);
-                     //       //                            allUpdates.push(
-                     //       //                               indx.migrateCreate(req, thisKnex).catch((err) => {
-                     //       //                                  var strErr = `${err.code}:${err.toString()}`;
-                     //       //                                  allErrors.push({
-                     //       //                                     context: "developer",
-                     //       //                                     message: `>>>>>>>>>>>>>>>>>>>>>>
-                     //       // Pass 2: creating connectFields:
-                     //       // index.migrateCreate() error:
-                     //       // ${strErr}
-                     //       // >>>>>>>>>>>>>>>>>>>>>>`,
-                     //       //                                     error: err,
-                     //       //                                     indx: indx.toObj(),
-                     //       //                                  });
-                     //       //                               })
-                     //       //                            );
-                     //    }
-                     // });
 
                      return migrateCreateSequential(
                         allIndexes,
@@ -366,13 +301,6 @@ ${strErr}
                            refreshObject(object);
                         });
                      });
-
-                     // return Promise.all(allUpdates).then(() => {
-                     //    // Now make sure knex has the latest object data
-                     //    (allObjects || []).forEach((object) => {
-                     //       refreshObject(object);
-                     //    });
-                     // });
                   })
                   .then(() => {
                      // Now that all the tables are created, we can go back
@@ -381,7 +309,6 @@ ${strErr}
                      req.log("::: IMPORT : creating connected fields");
 
                      var allConnections = [];
-                     // var allRetries = [];
 
                      // reapply connectFields to all objects BEFORE doing any
                      // .createField() s
@@ -414,139 +341,6 @@ ${strErr}
                            });
                         }
                      );
-
-                     //                      return new Promise((resolve /*, reject */) => {
-                     //                         function seqTry(cb) {
-                     //                            if (allConnections.length == 0) {
-                     //                               cb();
-                     //                            } else {
-                     //                               var field = allConnections.shift();
-                     //                               field
-                     //                                  .migrateCreate(req, thisKnex)
-                     //                                  .then(() => {
-                     //                                     seqTry(cb);
-                     //                                  })
-                     //                                  .catch(cb);
-                     //                            }
-                     //                         }
-                     //                         seqTry((err) => {
-                     //                            if (err) {
-                     //                               var strErr = `${
-                     //                                  err.code ? err.code : ""
-                     //                               }:${err.toString()}`;
-                     //                               allErrors.push({
-                     //                                  context: "developer",
-                     //                                  message: `>>>>>>>>>>>>>>>>>>>>>>
-                     // Pass 2: creating connectFields:
-                     // ABField.migrateCreate() error:
-                     // ${strErr}
-                     // >>>>>>>>>>>>>>>>>>>>>>`,
-                     //                                  error: err,
-                     //                               });
-                     //                               // NOTE: we log the error but continue on:
-                     //                               // return reject(err);
-                     //                            }
-                     //                            resolve();
-                     //                         });
-                     //                      });
-
-                     /*
-                     (allObjects || []).forEach((object) => {
-                        if (!(object instanceof AB.Class.ABObjectExternal)) {
-                           (object.connectFields() || []).forEach((field) => {
-                              allConnections.push(
-                                 field
-                                    .migrateCreate(req, thisKnex)
-                                    .catch((err) => {
-                                       var strErr = err.toString();
-                                       var isLock = false;
-                                       errorLOCK.forEach((e) => {
-                                          if (strErr.indexOf(e) != -1)
-                                             isLock = true;
-                                       });
-                                       if (isLock) {
-                                          allRetries.push(field);
-                                          return;
-                                       }
-                                       allErrors.push({
-                                          context: "developer",
-                                          message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 2: creating connectFields:
-ABMigration.createObject() error:
-${strErr}
->>>>>>>>>>>>>>>>>>>>>>`,
-                                          error: err,
-                                       });
-                                    })
-                              );
-                           });
-                        }
-                     });
-
-                     function seqRetry(cb) {
-                        // seqRetry()
-                        // a recursive function to sequencially process each of the
-                        // fields in the allRetries[].
-
-                        if (allRetries.length == 0) {
-                           cb();
-                        } else {
-                           var field = allRetries.shift();
-                           field._deadlockRetry = field._deadlockRetry || 1;
-                           req.log(
-                              `::: ER_LOCK_DEADLOCK on Field[${field.name}] ... retrying`
-                           );
-
-                           field
-                              .migrateCreate(req, thisKnex)
-                              .then(() => {
-                                 seqRetry(cb);
-                              })
-                              .catch((err) => {
-                                 var strErr = err.toString();
-                                 var isLock = false;
-                                 errorLOCK.forEach((e) => {
-                                    if (strErr.indexOf(e) != -1) isLock = true;
-                                 });
-                                 if (isLock) {
-                                    field._deadlockRetry++;
-                                    if (field._deadlockRetry < 4) {
-                                       allRetries.push(field);
-                                       seqRetry(cb);
-                                    } else {
-                                       req.log(
-                                          `:::ER_LOCK_DEADLOCK too many attempts for Field[${field.name}]`
-                                       );
-                                       cb(err);
-                                    }
-                                    return;
-                                 }
-                                 allErrors.push({
-                                    context: "developer",
-                                    message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 2: creating connectFields:
-ER_LOCK_DEADLOCK Retry...
-ABMigration.createObject() error:
-${strErr}
->>>>>>>>>>>>>>>>>>>>>>`,
-                                    error: err,
-                                 });
-                                 cb(err);
-                              });
-                        }
-                     }
-
-                     return Promise.all(allConnections).then(() => {
-                        return new Promise((resolve, reject) => {
-                           seqRetry((err) => {
-                              if (err) {
-                                 return reject(err);
-                              }
-                              resolve();
-                           });
-                        });
-                     });
-                     */
                   })
                   .then(() => {
                      // OK, now we can finish up with the Indexes that were
@@ -555,7 +349,6 @@ ${strErr}
                      req.log("::: IMPORT : Final Index Imports");
 
                      var allIndexes = [];
-                     // var allUpdates = [];
 
                      (allObjects || []).forEach((object) => {
                         var stashed = object.getStashedIndexes();
@@ -589,43 +382,6 @@ ${strErr}
                            refreshObject(object);
                         });
                      });
-
-                     // (allIndexes || []).forEach((indx) => {
-                     //    if (indx) {
-                     //       allUpdates.push(
-                     //          index
-                     //             .migrateCreate(req, thisKnex)
-                     //             .catch((err) => {
-                     //                req.notify.developer(err, {
-                     //                   context: "index.migrateCreate()",
-                     //                   indx: indx.toObj(),
-                     //                });
-                     //             })
-                     //       );
-                     //    }
-                     // });
-
-                     // function refreshObject(object) {
-                     //    // var knex = ABMigration.connection(object.connName);
-                     //    var knex = thisKnex;
-                     //    var tableName = object.dbTableName(true);
-
-                     //    if (knex.$$objection && knex.$$objection.boundModels) {
-                     //       // delete knex.$$objection.boundModels[tableName];
-
-                     //       // FIX : Knex Objection v.1.1.8
-                     //       knex.$$objection.boundModels.delete(
-                     //          tableName + "_" + object.modelName()
-                     //       );
-                     //    }
-                     // }
-
-                     // return Promise.all(allUpdates).then(() => {
-                     //    // Now make sure knex has the latest object data
-                     //    (allObjects || []).forEach((object) => {
-                     //       refreshObject(object);
-                     //    });
-                     // });
                   })
                   .then(() => {
                      ///
@@ -656,25 +412,6 @@ ${strErr}
                            });
                         }
                      );
-
-                     //                      var allMigrates = [];
-                     //                      (allQueries || []).forEach((query) => {
-                     //                         allMigrates.push(
-                     //                            query.migrateCreate(req, thisKnex).catch((err) => {
-                     //                               allErrors.push({
-                     //                                  context: "developer",
-                     //                                  message: `>>>>>>>>>>>>>>>>>>>>>>
-                     // Pass 3: creating QUERIES:
-                     // ABMigration.createQuery() error:
-                     // ${err.toString()}
-                     // >>>>>>>>>>>>>>>>>>>>>>`,
-                     //                                  error: err,
-                     //                               });
-                     //                            })
-                     //                         );
-                     //                      });
-
-                     //                      return Promise.all(allMigrates);
                   })
                   .then(() => {
                      // now save all the rest:

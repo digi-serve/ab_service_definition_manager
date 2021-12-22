@@ -18,17 +18,18 @@
 module.exports = {
    env: {
       node: true,
+      es6: true,
    },
 
    parserOptions: {
       ecmaVersion: 2021,
    },
-
+   root: true,
    // extending recommended config and config derived from eslint-config-prettier
    extends: ["eslint:recommended", "prettier"],
 
    // activating eslint-plugin-prettier (--fix stuff)
-   // plugins: ["prettier"],
+   plugins: ["prettier"],
 
    rules: {
       // customizing prettier rules (unfortunately not many of them are customizable)

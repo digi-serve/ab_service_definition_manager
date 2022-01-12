@@ -164,6 +164,17 @@ module.exports = {
             return new Promise((resolve, reject) => {
                Promise.resolve()
                   .then(() => {
+                     // Change innodb_lock_wait_timeout to 1 second to avoid lock table issues
+                     return thisKnex.schema.raw(
+                        "SET GLOBAL innodb_lock_wait_timeout = 1;"
+                     );
+                  })
+                  .then(() => {
+                     return thisKnex.schema.raw(
+                        "SET SESSION innodb_lock_wait_timeout = 1;"
+                     );
+                  })
+                  .then(() => {
                      // Insert all the ABDefinitions for Applications, fields and objects:
                      req.log(
                         "::: IMPORT : importing initial definitions (Application, Fields, objects)"
@@ -245,7 +256,7 @@ module.exports = {
                      // slowing down the number of parallel requests:
                      return migrateCreateSequential(
                         allMigrates,
-                        2,
+                        1,
                         (err, item) => {
                            allErrors.push({
                               context: "developer",
@@ -281,7 +292,7 @@ ${err.toString()}
 
                      return migrateCreateSequential(
                         allIndexes,
-                        2,
+                        1,
                         (err, item) => {
                            var strErr = `${err.code}:${err.toString()}`;
                            allErrors.push({
@@ -326,7 +337,7 @@ ${strErr}
 
                      return migrateCreateSequential(
                         allConnections,
-                        2,
+                        1,
                         (err, item) => {
                            var strErr = `${err.code}:${err.toString()}`;
                            allErrors.push({
@@ -362,7 +373,7 @@ ${strErr}
 
                      return migrateCreateSequential(
                         allIndexes,
-                        2,
+                        1,
                         (err, item) => {
                            var strErr = `${err.code}:${err.toString()}`;
                            allErrors.push({
@@ -397,7 +408,7 @@ ${strErr}
 
                      return migrateCreateSequential(
                         allQueries,
-                        2,
+                        1,
                         (err, item) => {
                            var strErr = `${err.code}:${err.toString()}`;
                            allErrors.push({
@@ -515,6 +526,17 @@ ${strErr}
                         }
                      }
                      resolve(data);
+                  })
+                  .then(() => {
+                     // Change innodb_lock_wait_timeout to 1 second to avoid lock table issues
+                     return thisKnex.schema.raw(
+                        "SET GLOBAL innodb_lock_wait_timeout = 50;"
+                     );
+                  })
+                  .then(() => {
+                     return thisKnex.schema.raw(
+                        "SET SESSION innodb_lock_wait_timeout = 50;"
+                     );
                   })
                   .catch((err) => {
                      req.notify.developer(err, {});

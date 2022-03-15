@@ -73,6 +73,9 @@ module.exports = {
                case "object":
                   def.json = AB.objectNew(def.json).toObj();
                   break;
+               case "query":
+                  def.json = AB.queryNew(def.json).toObj();
+                  break;
             }
 
             var fullDefinition = null;

@@ -56,6 +56,9 @@ module.exports = {
             var id = req.param("ID");
             var object = AB.objectByID(id);
             if (!object) {
+               object = AB.queryByID(id);
+            }
+            if (!object) {
                var err = new Error(`ABObject not found for [${id}]`);
                err.code = 403;
                return cb(err);

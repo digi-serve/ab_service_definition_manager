@@ -51,7 +51,7 @@ module.exports = {
             // all the ABDefinition.id that need to be exported.
 
             var hashKey = roleIDs.join(",");
-            if (!hashIDs[hashKey]) {
+            if (!hashIDs[hashKey] || hashIDs[hashKey].length == 0) {
                req.log("building ID hash");
 
                var applications = AB.applications((a) =>
@@ -87,6 +87,8 @@ module.exports = {
             cb(null, definitions);
          })
          .catch((err) => {
+            // we clear the cache just in case our data was incorrect.
+            AB.cacheClear(ServiceKey);
             req.notify.developer(err, {
                context:
                   "Service:definition_manager.definitionsForRoles: Error initializing ABFactory",

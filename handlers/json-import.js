@@ -335,6 +335,29 @@ ${strErr}
                         }
                      });
 
+                     // Now make sure our SiteObjects include the imported connect
+                     // fields:
+                     Object.keys(data.siteObjectConnections || {}).forEach(
+                        (k) => {
+                           let sObj = AB.objectByID(k);
+                           if (!sObj) {
+                              console.error(
+                                 `Unable to dereference SiteObject [${k}]`
+                              );
+                              return;
+                           }
+                           let fieldIDs = data.siteObjectConnections[k] || [];
+                           fieldIDs.forEach((f) => {
+                              sObj.fieldImport(f);
+                              // include these fields in the migrations
+                              let field = sObj.fieldByID(f);
+                              if (field) {
+                                 allConnections.push(field);
+                              }
+                           });
+                        }
+                     );
+
                      return migrateCreateSequential(
                         allConnections,
                         1,
@@ -352,6 +375,30 @@ ${strErr}
                            });
                         }
                      );
+                  })
+                  .then(() => {
+                     req.log("::: IMPORT : Saving Changes to Site Objects");
+                     let allSaves = [];
+                     // Update our SiteObjects to reference these new imported
+                     // fields
+                     Object.keys(data.siteObjectConnections || {}).forEach(
+                        (k) => {
+                           let sObj = AB.objectByID(k);
+                           if (!sObj) {
+                              console.error(
+                                 `Unable to dereference SiteObject [${k}]`
+                              );
+                              return;
+                           }
+                           let values = sObj.toDefinition().toObj();
+                           allSaves.push(
+                              req.retry(() =>
+                                 AB.definitionUpdate(req, sObj.id, values)
+                              )
+                           );
+                        }
+                     );
+                     return Promise.all(allSaves);
                   })
                   .then(() => {
                      // OK, now we can finish up with the Indexes that were
@@ -392,6 +439,14 @@ ${strErr}
                         (allObjects || []).forEach((object) => {
                            refreshObject(object);
                         });
+
+                        Object.keys(data.siteObjectConnections || {}).forEach(
+                           (k) => {
+                              let sObj = AB.objectByID(k);
+                              if (!sObj) return;
+                              refreshObject(sObj);
+                           }
+                        );
                      });
                   })
                   .then(() => {
@@ -499,6 +554,62 @@ ${strErr}
                      });
 
                      return Promise.all(allFiles);
+                  })
+                  .then(() => {
+                     req.log("::: IMPORT : Saving Roles and Scopes");
+                     const SiteRole = AB.objectRole();
+                     const SiteScope = AB.objectScope();
+
+                     var allRoles = [];
+                     var allScopes = [];
+                     (data.roles || []).forEach((role) => {
+                        // let scopeIDs = [];
+                        (role.scopes || []).forEach((s) => {
+                           allScopes.push(s);
+                           // scopeIDs.push(s.id);
+                        });
+                        // role.scopes = scopeIDs;
+                        allRoles.push(role);
+                     });
+
+                     return Promise.resolve()
+                        .then(() => {
+                           // Save Scopes 1st
+                           var allScopeSaves = allScopes.map((s) =>
+                              req
+                                 .retry(() => SiteScope.model().create(s))
+                                 .catch((err) => {
+                                    let strErr = err.toString();
+                                    if (strErr.indexOf("ER_DUP_ENTRY") > -1) {
+                                       return req.retry(() =>
+                                          SiteScope.model().update(s.uuid, s)
+                                       );
+                                    }
+                                    throw err;
+                                 })
+                           );
+                           return Promise.all(allScopeSaves);
+                        })
+                        .then(() => {
+                           // Save Roles with connected ScopeIDs
+                           var allRoleSaves = allRoles.map((role) =>
+                              req
+                                 .retry(() => SiteRole.model().create(role))
+                                 .catch((err) => {
+                                    let strErr = err.toString();
+                                    if (strErr.indexOf("ER_DUP_ENTRY") > -1) {
+                                       return req.retry(() =>
+                                          SiteRole.model().update(
+                                             role.uuid,
+                                             role
+                                          )
+                                       );
+                                    }
+                                    throw err;
+                                 })
+                           );
+                           return Promise.all(allRoleSaves);
+                        });
                   })
                   .then(() => {
                      console.log(":::");

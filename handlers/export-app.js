@@ -54,7 +54,7 @@ module.exports = {
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
-         .then((AB) => { // eslint-disable-line
+         .then(async (AB) => { // eslint-disable-line
             try {
                var ID = req.param("ID");
                var app = AB.applicationByID(ID);
@@ -84,10 +84,26 @@ module.exports = {
                // we use this to exclude any duplicate definitions. We parse this into
                // our final list at the end.
 
-               var ids = [];
-               app.exportIDs(ids);
-               ids.forEach((id) => {
-                  dataHash[id] = AB.definitionByID(id, true);
+               // our upgraded export format:
+               var data = {
+                  settings: {
+                     includeSystemObjects: app.isAdminApp,
+                     // {bool}
+                  },
+                  ids: [],
+                  siteObjectConnections: {
+                     // SiteUser.id : [ ABField.ID, ],
+                     // SiteRole.id : [ ABField.ID,, ]
+                  },
+                  roles: {
+                     /* Role.id : Role.id */
+                  },
+               };
+               app.exportData(data);
+               data.ids.forEach((id) => {
+                  if (!dataHash[id]) {
+                     dataHash[id] = AB.definitionByID(id, true);
+                  }
                });
 
                // parse each entry in our dataHash & store it in our
@@ -95,6 +111,40 @@ module.exports = {
                Object.keys(dataHash).forEach((k) => {
                   exportData.definitions.push(dataHash[k]);
                });
+
+               // copy in the siteObjectConnections
+               exportData.siteObjectConnections = {};
+               (Object.keys(data.siteObjectConnections) || []).forEach((k) => {
+                  exportData.siteObjectConnections[k] = (
+                     data.siteObjectConnections[k] || []
+                  ).filter((f) => f);
+               });
+
+               var roleIDs = Object.keys(data.roles || {});
+               if (roleIDs.length == 0) {
+                  done();
+                  return;
+               }
+               const SiteRole = AB.objectRole();
+               let list = await req.retry(() =>
+                  SiteRole.model().find({
+                     where: { uuid: roleIDs },
+                     populate: true,
+                  })
+               );
+
+               // clean up our entries to not try to include
+               // current User data and redundant __relation fields
+               (list || []).forEach((role) => {
+                  delete role.id;
+                  role.users = [];
+                  delete role.scopes__relation;
+                  (role.scopes || []).forEach((s) => {
+                     delete s.id;
+                     s.createdBy = null;
+                  });
+               });
+               exportData.roles = list;
 
                cb(null, exportData);
             } catch (e) {

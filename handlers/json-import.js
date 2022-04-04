@@ -137,30 +137,6 @@ module.exports = {
                });
             }
 
-            /**
-             * @function refreshObject()
-             * a helper fn to reset the knex bound model definitions with
-             * the current definition of the given model.  We need to do
-             * this as we have taken off fields and are periodically adding
-             * them back on during our import.
-             * @param {ABObject} object
-             *        The ABObject definition we are recreating.
-             */
-            function refreshObject(object) {
-               // var knex = ABMigration.connection(object.connName);
-               var knex = thisKnex;
-               var tableName = object.dbTableName(true);
-
-               if (knex.$$objection && knex.$$objection.boundModels) {
-                  // delete knex.$$objection.boundModels[tableName];
-
-                  // FIX : Knex Objection v.1.1.8
-                  knex.$$objection.boundModels.delete(
-                     tableName + "_" + object.modelName()
-                  );
-               }
-            }
-
             return new Promise((resolve, reject) => {
                Promise.resolve()
                   .then(() => {
@@ -309,7 +285,7 @@ ${strErr}
                      ).then(() => {
                         // Now make sure knex has the latest object data
                         (allObjects || []).forEach((object) => {
-                           refreshObject(object);
+                           object.model().modelKnexRefresh();
                         });
                      });
                   })
@@ -437,14 +413,14 @@ ${strErr}
                      ).then(() => {
                         // Now make sure knex has the latest object data
                         (allObjects || []).forEach((object) => {
-                           refreshObject(object);
+                           object.model().modelKnexRefresh();
                         });
 
                         Object.keys(data.siteObjectConnections || {}).forEach(
                            (k) => {
                               let sObj = AB.objectByID(k);
                               if (!sObj) return;
-                              refreshObject(sObj);
+                              sObj.model().modelKnexRefresh();
                            }
                         );
                      });

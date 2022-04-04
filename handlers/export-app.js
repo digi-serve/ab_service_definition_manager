@@ -11,6 +11,14 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 const _ = require("lodash");
 const moment = require("moment");
 
+const IgnoreRoleIDs = [
+   "dd6c2d34-0982-48b7-bc44-2456474edbea",
+   "6cc04894-a61b-4fb5-b3e5-b8c3f78bd331",
+   "e1be4d22-1d00-4c34-b205-ef84b8334b19",
+];
+// {array} The Role.ids of the default roles installed at creation.
+// we don't need to import these.
+
 module.exports = {
    /**
     * Key: the cote message key we respond to.
@@ -120,7 +128,9 @@ module.exports = {
                   ).filter((f) => f);
                });
 
-               var roleIDs = Object.keys(data.roles || {});
+               var roleIDs = Object.keys(data.roles || {}).filter(
+                  (rid) => IgnoreRoleIDs.indexOf(rid) == -1
+               );
                if (roleIDs.length == 0) {
                   done();
                   return;

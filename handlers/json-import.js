@@ -220,6 +220,7 @@ module.exports = {
 
                      var allMigrates = [];
                      (allObjects || []).forEach((object) => {
+                        object.stashCombineFields();
                         object.stashConnectFields(); // effectively ignores connectFields
                         object.stashIndexFieldsWithConnection();
                         // NOTE: keep .stashIndexNormal() after .stashIndexFieldsWithConnection()
@@ -426,6 +427,41 @@ ${strErr}
                      });
                   })
                   .then(() => {
+                     // OK, now we can finish up with the Combine fields that were
+
+                     req.log("::: IMPORT : Final Combine Fields Imports");
+
+                     let allCombineFields = [];
+
+                     (allObjects || []).forEach((object) => {
+                        let stashed = object.getStashedCombineFields();
+                        if (stashed && stashed.length > 0) {
+                           allCombineFields = allCombineFields.concat(stashed);
+                           object.applyAllFields();
+                        }
+                     });
+
+                     allCombineFields = allCombineFields.filter((i) => i);
+
+                     return migrateCreateSequential(
+                        allCombineFields,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 5: creating Combine FIELD :
+ABFieldCombine.migrateCreate() error:
+${strErr}
+>>>>>>>>>>>>>>>>>>>>>>`,
+                              error: err,
+                              field: item.toObj(),
+                           });
+                        }
+                     );
+                  })
+                  .then(() => {
                      ///
                      /// Now Queries
                      ///
@@ -445,7 +481,7 @@ ${strErr}
                            allErrors.push({
                               context: "developer",
                               message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 5: creating QUERIES :
+Pass 6: creating QUERIES :
 query.migrateCreate() error:
 ${strErr}
 >>>>>>>>>>>>>>>>>>>>>>`,

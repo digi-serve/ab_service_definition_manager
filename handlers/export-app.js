@@ -95,7 +95,7 @@ module.exports = {
                // our upgraded export format:
                var data = {
                   settings: {
-                     includeSystemObjects: app.isAdminApp,
+                     includeSystemObjects: app.isSystemObject,
                      // {bool}
                   },
                   ids: [],
@@ -128,33 +128,44 @@ module.exports = {
                   ).filter((f) => f);
                });
 
+               // anything we export should NOT carry with it the
+               // importedFieldID
+               var objectDefs = exportData.definitions.filter((d) => {
+                  d.type == "object";
+               });
+               objectDefs.forEach((o) => {
+                  if (o.json.importedFieldIDs) {
+                     o.json.importedFieldIDs = [];
+                  }
+               });
+
                var roleIDs = Object.keys(data.roles || {}).filter(
                   (rid) => IgnoreRoleIDs.indexOf(rid) == -1
                );
-               if (roleIDs.length == 0) {
-                  done();
-                  return;
-               }
-               const SiteRole = AB.objectRole();
-               let list = await req.retry(() =>
-                  SiteRole.model().find({
-                     where: { uuid: roleIDs },
-                     populate: true,
-                  })
-               );
+               if (roleIDs.length > 0) {
+                  const SiteRole = AB.objectRole();
+                  let list = await req.retry(() =>
+                     SiteRole.model().find({
+                        where: { uuid: roleIDs },
+                        populate: true,
+                     })
+                  );
 
-               // clean up our entries to not try to include
-               // current User data and redundant __relation fields
-               (list || []).forEach((role) => {
-                  delete role.id;
-                  role.users = [];
-                  delete role.scopes__relation;
-                  (role.scopes || []).forEach((s) => {
-                     delete s.id;
-                     s.createdBy = null;
+                  // clean up our entries to not try to include
+                  // current User data and redundant __relation fields
+                  (list || []).forEach((role) => {
+                     delete role.id;
+                     role.users = [];
+                     delete role.scopes__relation;
+                     (role.scopes || []).forEach((s) => {
+                        delete s.id;
+                        s.createdBy = null;
+                     });
                   });
-               });
-               exportData.roles = list;
+                  exportData.roles = list;
+               } else {
+                  exportData.roles = [];
+               }
 
                cb(null, exportData);
             } catch (e) {

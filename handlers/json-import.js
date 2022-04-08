@@ -575,12 +575,15 @@ ${strErr}
                      var allRoles = [];
                      var allScopes = [];
                      (data.roles || []).forEach((role) => {
-                        // let scopeIDs = [];
                         (role.scopes || []).forEach((s) => {
-                           allScopes.push(s);
-                           // scopeIDs.push(s.id);
+                           let found = allScopes.find((as) => as.id == s.id);
+                           if (!found) {
+                              allScopes.push(s);
+                           }
                         });
-                        // role.scopes = scopeIDs;
+                        // In order to prevent any loss to existing
+                        // assignments, remove any .users field
+                        delete role.users;
                         allRoles.push(role);
                      });
 

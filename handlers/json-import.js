@@ -576,7 +576,9 @@ ${strErr}
                      var allScopes = [];
                      (data.roles || []).forEach((role) => {
                         (role.scopes || []).forEach((s) => {
-                           let found = allScopes.find((as) => as.id == s.id);
+                           let found = allScopes.find(
+                              (as) => as.uuid == s.uuid
+                           );
                            if (!found) {
                               allScopes.push(s);
                            }

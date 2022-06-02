@@ -1,5 +1,5 @@
 ##
-## digiserve/ab-definition-manager:develop
+## digiserve/ab-definition-manager
 ##
 ## This is our microservice for our AppBuilder Definitions.
 ##
@@ -9,9 +9,19 @@
 ## $ docker push digiserve/ab-definition-manager:develop
 ##
 
-FROM digiserve/service-cli:develop
+ARG BRANCH=master
 
-RUN git clone --recursive https://github.com/digi-serve/ab_service_definition_manager.git app && cd app && git checkout develop && git submodule update --recursive && npm install
+FROM digiserve/service-cli:${BRANCH}
+
+COPY . /app
+
+WORKDIR /app
+
+RUN npm i -f
+
+WORKDIR /app/AppBuilder
+
+RUN npm i -f
 
 WORKDIR /app
 

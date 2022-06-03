@@ -15,4 +15,13 @@ jobs:
       runs-on: ubuntu-latest
       steps:
         - uses: digi-serve/ab-install-action@service-build
-        
+          with:
+            sha: ${{ github.sha }}
+        - name: Run Cypress Tests
+          uses: cypress-io/github-action@v2
+          with:
+            working-directory: ./AppBuilder
+            project: ./test/e2e
+            config: baseUrl=http://localhost:80,testFiles=**/*.js,responseTimeout=100000,defaultCommandTimeout=30000,retries=2
+            install: false
+            browser: chrome

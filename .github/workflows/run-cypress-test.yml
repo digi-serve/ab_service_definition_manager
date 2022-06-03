@@ -14,9 +14,10 @@ jobs:
       name: Run Tests
       runs-on: ubuntu-latest
       steps:
-        - uses: digi-serve/ab-install-action@service-build
+        - uses: actions/checkout@v3
           with:
-            sha: ${{ github.sha }}
+            submodules: recursive 
+        - uses: digi-serve/ab-install-action@service-build
         - name: Run Cypress Tests
           uses: cypress-io/github-action@v2
           with:

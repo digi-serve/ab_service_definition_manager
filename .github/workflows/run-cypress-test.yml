@@ -17,6 +17,7 @@ jobs:
         - uses: actions/checkout@v3
           with:
             submodules: recursive 
+            folder: ab_service_definition_manager
         - uses: digi-serve/ab-install-action@service-build
         - name: Run Cypress Tests
           uses: cypress-io/github-action@v2

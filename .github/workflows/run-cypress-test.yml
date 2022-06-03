@@ -27,3 +27,5 @@ jobs:
             config: baseUrl=http://localhost:80,testFiles=**/*.js,responseTimeout=100000,defaultCommandTimeout=30000,retries=2
             install: false
             browser: chrome
+            wait-on: "http://localhost:80"
+            wait-on-timeout: 300

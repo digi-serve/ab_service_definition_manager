@@ -32,8 +32,6 @@ module.exports = {
       var ServiceKey = this.key;
       req.log(ServiceKey);
 
-      let tenantID = req.tenantID();
-
       // Get the passed in parameters
       var roles = req.param("roles");
       let roleIDs = roles.map((r) => r.uuid);
@@ -43,7 +41,7 @@ module.exports = {
 
       ABBootstrap.init(req)
          .then((AB) => {
-            let hashIDs = AB.cache(ServiceKey);
+            let hashIDs = AB.cache("defs-for-role");
             if (!hashIDs) hashIDs = {};
 
             var ids = [];
@@ -69,7 +67,7 @@ module.exports = {
                   a.exportIDs(aIDs);
                });
                hashIDs[hashKey] = aIDs;
-               AB.cache(ServiceKey, hashIDs);
+               AB.cache("defs-for-role", hashIDs);
             }
 
             ids = hashIDs[hashKey];

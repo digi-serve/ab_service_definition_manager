@@ -7,6 +7,7 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 // {ABBootstrap}
 // responsible for initializing and returning an {ABFactory} that will work
 // with the current tenant for the incoming request.
+const cacheUpdate = require("../utils/cacheUpdate");
 
 module.exports = {
    /**
@@ -66,6 +67,7 @@ module.exports = {
             req.retry(() => AB.definitionUpdate(req, id, values))
                .then((definition) => {
                   fullDefinition = definition.toObj();
+                  cacheUpdate(AB);
                   cb(null, fullDefinition);
                })
                .then(() => {

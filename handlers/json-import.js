@@ -7,6 +7,7 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 // {ABBootstrap}
 // responsible for initializing and returning an {ABFactory} that will work
 // with the current tenant for the incoming request.
+const cacheUpdate = require("../utils/cacheUpdate");
 
 module.exports = {
    /**
@@ -136,6 +137,8 @@ module.exports = {
                   }
                });
             }
+
+            cacheUpdate(AB);
 
             return new Promise((resolve, reject) => {
                Promise.resolve()

@@ -1,7 +1,10 @@
 /**
- * find
+ * tenants-update-application
  * our Request handler.
  */
+
+const getTenants = require("../queries/getTenants");
+const getApplicationsByTenantUUID = require("../queries/getApplicationsByTenantUUID");
 
 module.exports = {
    /**
@@ -51,102 +54,67 @@ module.exports = {
             break;
          }
 
-      const getTenantUUIDs = () => {
-         const SITE_TENANT = "site_tenant";
+      const tenantUUIDs = await getTenants(req, ["uuid"]);
+
+      const penddingGetApplicationsByTenantUUID = [];
+
+      for (let i = 0; i < tenantUUIDs.length; i++) {
+         penddingGetApplicationsByTenantUUID.push(
+            getApplicationsByTenantUUID(
+               req,
+               tenantUUIDs[i].uuid,
+               ["id"],
+               [applicationID]
+            )
+         );
+      }
+
+      const applicationsByTenantUUID = await Promise.all(
+         penddingGetApplicationsByTenantUUID
+      );
+
+      const tenantUUIDsFilterByApplication = applicationsByTenantUUID
+         .filter((e) => e.results.length)
+         .map((e) => e.tenantUUID);
+      const penddingImportApplication = [];
+
+      const importApplication = (tenantUUID) => {
+         const newReq = req;
+
+         // We need the "req._tenantID" parameter to connect tenant databases not ABFactory.tenantID
+         newReq._tenantID = tenantUUID;
 
          return new Promise((resolve, reject) => {
-            const sqlQueryTenantUUID = `SELECT uuid FROM \`${SITE_TENANT}\``;
-
-            req.query(
-               sqlQueryTenantUUID,
-               [],
-               (error, results /*, fields */) => {
+            newReq.serviceRequest(
+               "definition_manager.json-import",
+               {
+                  json: data,
+               },
+               (error) => {
                   if (error) {
-                     req.log(sqlQueryTenantUUID);
+                     req.notify.developer(error, {
+                        context:
+                           "definition_manager.json-import: Error requesting json-import.",
+                     });
 
                      reject(error);
                      cb(error);
 
                      return;
                   }
-
-                  resolve(results);
+                  resolve();
                }
             );
          });
       };
 
-      const tenantUUIDs = await getTenantUUIDs();
-
-      const penddingFilterTenantUUIDsByApplication = [];
-
-      for (let i = 0; i < tenantUUIDs.length; i++) {
-         const APPBUILDER_DEFINITION = "appbuilder_definition";
-         const sqlQueryDefinition = `SELECT \`id\` FROM \`appbuilder-${tenantUUIDs[i].uuid}\`.\`${APPBUILDER_DEFINITION}\` WHERE \`id\` = "${applicationID}"`;
-
-         const getTenantUUIDByApplication = () => {
-            return new Promise((resolve, reject) => {
-               req.query(sqlQueryDefinition, [], (error, results) => {
-                  if (error) {
-                     req.log(sqlQueryDefinition);
-
-                     reject(error);
-                     cb(error);
-
-                     return;
-                  }
-
-                  if (results.length) {
-                     resolve(tenantUUIDs[i].uuid);
-
-                     return;
-                  }
-
-                  resolve(null);
-               });
-            });
-         };
-
-         penddingFilterTenantUUIDsByApplication.push(
-            getTenantUUIDByApplication()
+      for (let i = 0; i < tenantUUIDsFilterByApplication.length; i++) {
+         penddingImportApplication.push(
+            importApplication(tenantUUIDsFilterByApplication[i])
          );
       }
 
-      const tenantUUIDsByApplication = (
-         await Promise.all(penddingFilterTenantUUIDsByApplication)
-      ).filter((e) => e);
-
-      for (let i = 0; i < tenantUUIDsByApplication.length; i++) {
-         const importApplication = () => {
-            return new Promise((resolve, reject) => {
-               const newReq = req;
-
-               newReq._tenantID = tenantUUIDsByApplication[i];
-               newReq.serviceRequest(
-                  "definition_manager.json-import",
-                  {
-                     json: data,
-                  },
-                  (error) => {
-                     if (error) {
-                        req.notify.developer(error, {
-                           context:
-                              "definition_manager.json-import: Error requesting json-import.",
-                        });
-
-                        reject(error);
-                        cb(error);
-
-                        return;
-                     }
-                     resolve();
-                  }
-               );
-            });
-         };
-
-         await importApplication();
-      }
+      await Promise.all(penddingImportApplication);
 
       cb(null, { status: "success" });
    },

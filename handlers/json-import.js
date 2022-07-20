@@ -7,6 +7,7 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 // {ABBootstrap}
 // responsible for initializing and returning an {ABFactory} that will work
 // with the current tenant for the incoming request.
+const cacheUpdate = require("../utils/cacheUpdate");
 
 module.exports = {
    /**
@@ -73,31 +74,85 @@ module.exports = {
             // these will be displayed in a block at the end.
 
             /**
-             * @function refreshObject()
-             * a helper fn to reset the knex bound model definitions with
-             * the current definition of the given model.  We need to do
-             * this as we have taken off fields and are periodically adding
-             * them back on during our import.
-             * @param {ABObject} object
-             *        The ABObject definition we are recreating.
+             * @function migrateCreateSequential()
+             * a helper fn to ensure the given items perform their
+             * .migrateCreate() sequentially.
+             * NOTE: this was done to prevent errors related to performing
+             * too many operations in parallel.
+             * @param {array} allItems
+             *        An array of objects that need to perform a .migrateCreate()
+             * @param {int} numParallel
+             *        How many of these objects do you want to attempt to
+             *        process in parallel.
+             *        1 = purely sequential
+             * @param {fn} onError
+             *        An error handler in case the .migrateCreate() fn returns
+             *        an error.
+             *        NOTE: this will not stop the process from continuing on.
+             * @return {Promise}
              */
-            function refreshObject(object) {
-               // var knex = ABMigration.connection(object.connName);
-               var knex = thisKnex;
-               var tableName = object.dbTableName(true);
+            // NOTE: keep this INSIDE the context of our fn() handler.
+            //       we reference the  req, and thisKnex variables.
+            function migrateCreateSequential(allItems, numParallel, onError) {
+               return new Promise((resolve /*, reject */) => {
+                  function doOne(cb) {
+                     if (allItems.length == 0) {
+                        cb();
+                     } else {
+                        var obj = allItems.shift();
+                        obj.migrateCreate(req, thisKnex)
+                           .then(() => {
+                              doOne(cb);
+                           })
+                           .catch((err) => {
+                              onError(err, obj);
+                              doOne(cb);
+                           });
+                     }
+                  }
 
-               if (knex.$$objection && knex.$$objection.boundModels) {
-                  // delete knex.$$objection.boundModels[tableName];
+                  // var numParallel = 2;
+                  // {int} the number of objects to be processing in parallel
 
-                  // FIX : Knex Objection v.1.1.8
-                  knex.$$objection.boundModels.delete(
-                     tableName + "_" + object.modelName()
-                  );
-               }
+                  var numProcessing = 0;
+                  // {int} the # currently running.
+
+                  function endHandler(err) {
+                     if (err) {
+                        // ok, we should have noted the errors in allErrors
+                        // so we continue on here.
+                     }
+                     numProcessing--;
+
+                     // if all the objects have completed, then:
+                     if (numProcessing < 1) {
+                        resolve();
+                     }
+                  }
+
+                  // Start up the number of Objects we want in Parallel
+                  for (var i = 1; i <= numParallel; i++) {
+                     numProcessing++;
+                     doOne(endHandler);
+                  }
+               });
             }
+
+            cacheUpdate(AB);
 
             return new Promise((resolve, reject) => {
                Promise.resolve()
+                  .then(() => {
+                     // Change innodb_lock_wait_timeout to 1 second to avoid lock table issues
+                     return thisKnex.schema.raw(
+                        "SET GLOBAL innodb_lock_wait_timeout = 1;"
+                     );
+                  })
+                  .then(() => {
+                     return thisKnex.schema.raw(
+                        "SET SESSION innodb_lock_wait_timeout = 1;"
+                     );
+                  })
                   .then(() => {
                      // Insert all the ABDefinitions for Applications, fields and objects:
                      req.log(
@@ -110,9 +165,9 @@ module.exports = {
                            (d) =>
                               d &&
                               [
-                                 "query",
-                                 "object",
                                  "field",
+                                 "object",
+                                 "query",
                                  "index",
                                  "application",
                               ].indexOf(d.type) > -1
@@ -159,7 +214,7 @@ module.exports = {
                         });
                   })
                   .then(() => {
-                     // now load all the Objects, and do a .migrageCreate() on them:
+                     // now load all the Objects, and do a .migrateCreate() on them:
                      // NOTE: there is a timing issue with ABFieldConnect fields.
                      // We have to 1st, create ALL the object tables before we can
                      // create connections between them.
@@ -168,27 +223,33 @@ module.exports = {
 
                      var allMigrates = [];
                      (allObjects || []).forEach((object) => {
+                        object.stashCombineFields();
                         object.stashConnectFields(); // effectively ignores connectFields
                         object.stashIndexFieldsWithConnection();
                         // NOTE: keep .stashIndexNormal() after .stashIndexFieldsWithConnection()
                         object.stashIndexNormal();
 
-                        allMigrates.push(
-                           object.migrateCreate(req).catch((err) => {
-                              allErrors.push({
-                                 context: "developer",
-                                 message: `>>>>>>>>>>>>>>>>>>>>>>
+                        allMigrates.push(object);
+                     });
+
+                     // {fix} attempt to avoid ER_LOCK_WAIT_TIMEOUT errors by
+                     // slowing down the number of parallel requests:
+                     return migrateCreateSequential(
+                        allMigrates,
+                        1,
+                        (err, item) => {
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
 Pass 1: creating objects WITHOUT connectFields:
 ABMigration.createObject() error:
 ${err.toString()}
 >>>>>>>>>>>>>>>>>>>>>>`,
-                                 error: err,
-                              });
-                           })
-                        );
-                     });
-
-                     return Promise.all(allMigrates);
+                              error: err,
+                              obj: item.toObj(),
+                           });
+                        }
+                     );
                   })
                   .then(() => {
                      // make sure all fields are created before we start with
@@ -197,7 +258,6 @@ ${err.toString()}
                      req.log("::: IMPORT : Normal Index Imports");
 
                      var allIndexes = [];
-                     var allUpdates = [];
 
                      (allObjects || []).forEach((object) => {
                         var stashed = object.getStashedIndexNormals();
@@ -207,23 +267,29 @@ ${err.toString()}
                         }
                      });
 
-                     (allIndexes || []).forEach((indx) => {
-                        if (indx) {
-                           allUpdates.push(
-                              indx.migrateCreate(req, thisKnex).catch((err) => {
-                                 req.notify.developer(err, {
-                                    context: "index.migrateCreate()",
-                                    indx: indx.toObj(),
-                                 });
-                              })
-                           );
-                        }
-                     });
+                     // clear out any null entries
+                     allIndexes = allIndexes.filter((i) => i);
 
-                     return Promise.all(allUpdates).then(() => {
+                     return migrateCreateSequential(
+                        allIndexes,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 2: creating Normal INDEX :
+index.migrateCreate() error:
+${strErr}
+>>>>>>>>>>>>>>>>>>>>>>`,
+                              error: err,
+                              indx: item.toObj(),
+                           });
+                        }
+                     ).then(() => {
                         // Now make sure knex has the latest object data
                         (allObjects || []).forEach((object) => {
-                           refreshObject(object);
+                           object.model().modelKnexRefresh();
                         });
                      });
                   })
@@ -234,7 +300,6 @@ ${err.toString()}
                      req.log("::: IMPORT : creating connected fields");
 
                      var allConnections = [];
-                     var allRetries = [];
 
                      // reapply connectFields to all objects BEFORE doing any
                      // .createField() s
@@ -245,92 +310,75 @@ ${err.toString()}
                      (allObjects || []).forEach((object) => {
                         if (!(object instanceof AB.Class.ABObjectExternal)) {
                            (object.connectFields() || []).forEach((field) => {
-                              allConnections.push(
-                                 field
-                                    .migrateCreate(req, thisKnex)
-                                    .catch((err) => {
-                                       var strErr = err.toString();
-                                       if (
-                                          strErr.indexOf("ER_LOCK_DEADLOCK") !=
-                                          -1
-                                       ) {
-                                          allRetries.push(field);
-                                          return;
-                                       }
-                                       allErrors.push({
-                                          context: "developer",
-                                          message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 2: creating connectFields:
-ABMigration.createObject() error:
-${strErr}
->>>>>>>>>>>>>>>>>>>>>>`,
-                                          error: err,
-                                       });
-                                    })
+                              allConnections.push(field);
+                           });
+                        }
+                     });
+
+                     // Now make sure our SiteObjects include the imported connect
+                     // fields:
+                     Object.keys(data.siteObjectConnections || {}).forEach(
+                        (k) => {
+                           let sObj = AB.objectByID(k);
+                           if (!sObj) {
+                              console.error(
+                                 `Unable to dereference SiteObject [${k}]`
                               );
+                              return;
+                           }
+                           let fieldIDs = data.siteObjectConnections[k] || [];
+                           fieldIDs.forEach((f) => {
+                              sObj.fieldImport(f);
+                              // include these fields in the migrations
+                              let field = sObj.fieldByID(f);
+                              if (field) {
+                                 allConnections.push(field);
+                              }
                            });
                         }
-                     });
+                     );
 
-                     function seqRetry(cb) {
-                        // seqRetry()
-                        // a recursive function to sequencially process each of the
-                        // fields in the allRetries[].
-
-                        if (allRetries.length == 0) {
-                           cb();
-                        } else {
-                           var field = allRetries.shift();
-                           field._deadlockRetry = field._deadlockRetry || 1;
-                           req.log(
-                              `::: ER_LOCK_DEADLOCK on Field[${field.name}] ... retrying`
-                           );
-
-                           field
-                              .migrateCreate(req, thisKnex)
-                              .then(() => {
-                                 seqRetry(cb);
-                              })
-                              .catch((err) => {
-                                 var strErr = err.toString();
-                                 if (strErr.indexOf("ER_LOCK_DEADLOCK") != -1) {
-                                    field._deadlockRetry++;
-                                    if (field._deadlockRetry < 4) {
-                                       allRetries.push(field);
-                                       seqRetry(cb);
-                                    } else {
-                                       req.log(
-                                          `:::ER_LOCK_DEADLOCK too many attempts for Field[${field.name}]`
-                                       );
-                                       cb(err);
-                                    }
-                                    return;
-                                 }
-                                 allErrors.push({
-                                    context: "developer",
-                                    message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 2: creating connectFields:
-ER_LOCK_DEADLOCK Retry...
-ABMigration.createObject() error:
+                     return migrateCreateSequential(
+                        allConnections,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 3: creating connectFields:
+field.migrateCreate() error:
 ${strErr}
 >>>>>>>>>>>>>>>>>>>>>>`,
-                                    error: err,
-                                 });
-                                 cb(err);
-                              });
-                        }
-                     }
-
-                     return Promise.all(allConnections).then(() => {
-                        return new Promise((resolve, reject) => {
-                           seqRetry((err) => {
-                              if (err) {
-                                 return reject(err);
-                              }
-                              resolve();
+                              error: err,
+                              field: item.toObj(),
                            });
-                        });
-                     });
+                        }
+                     );
+                  })
+                  .then(() => {
+                     req.log("::: IMPORT : Saving Changes to Site Objects");
+                     let allSaves = [];
+                     // Update our SiteObjects to reference these new imported
+                     // fields
+                     Object.keys(data.siteObjectConnections || {}).forEach(
+                        (k) => {
+                           let sObj = AB.objectByID(k);
+                           if (!sObj) {
+                              console.error(
+                                 `Unable to dereference SiteObject [${k}]`
+                              );
+                              return;
+                           }
+                           let values = sObj.toDefinition().toObj();
+                           allSaves.push(
+                              req.retry(() =>
+                                 AB.definitionUpdate(req, sObj.id, values)
+                              )
+                           );
+                        }
+                     );
+                     return Promise.all(allSaves);
                   })
                   .then(() => {
                      // OK, now we can finish up with the Indexes that were
@@ -339,7 +387,6 @@ ${strErr}
                      req.log("::: IMPORT : Final Index Imports");
 
                      var allIndexes = [];
-                     var allUpdates = [];
 
                      (allObjects || []).forEach((object) => {
                         var stashed = object.getStashedIndexes();
@@ -349,42 +396,73 @@ ${strErr}
                         }
                      });
 
-                     (allIndexes || []).forEach((indx) => {
-                        if (indx) {
-                           allUpdates.push(
-                              index
-                                 .migrateCreate(req, thisKnex)
-                                 .catch((err) => {
-                                    req.notify.developer(err, {
-                                       context: "index.migrateCreate()",
-                                       indx: indx.toObj(),
-                                    });
-                                 })
-                           );
+                     allIndexes = allIndexes.filter((i) => i);
+
+                     return migrateCreateSequential(
+                        allIndexes,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 4: creating Final INDEX :
+index.migrateCreate() error:
+${strErr}
+>>>>>>>>>>>>>>>>>>>>>>`,
+                              error: err,
+                              indx: item.toObj(),
+                           });
+                        }
+                     ).then(() => {
+                        // Now make sure knex has the latest object data
+                        (allObjects || []).forEach((object) => {
+                           object.model().modelKnexRefresh();
+                        });
+
+                        Object.keys(data.siteObjectConnections || {}).forEach(
+                           (k) => {
+                              let sObj = AB.objectByID(k);
+                              if (!sObj) return;
+                              sObj.model().modelKnexRefresh();
+                           }
+                        );
+                     });
+                  })
+                  .then(() => {
+                     // OK, now we can finish up with the Combine fields that were
+
+                     req.log("::: IMPORT : Final Combine Fields Imports");
+
+                     let allCombineFields = [];
+
+                     (allObjects || []).forEach((object) => {
+                        let stashed = object.getStashedCombineFields();
+                        if (stashed && stashed.length > 0) {
+                           allCombineFields = allCombineFields.concat(stashed);
+                           object.applyAllFields();
                         }
                      });
 
-                     // function refreshObject(object) {
-                     //    // var knex = ABMigration.connection(object.connName);
-                     //    var knex = thisKnex;
-                     //    var tableName = object.dbTableName(true);
+                     allCombineFields = allCombineFields.filter((i) => i);
 
-                     //    if (knex.$$objection && knex.$$objection.boundModels) {
-                     //       // delete knex.$$objection.boundModels[tableName];
-
-                     //       // FIX : Knex Objection v.1.1.8
-                     //       knex.$$objection.boundModels.delete(
-                     //          tableName + "_" + object.modelName()
-                     //       );
-                     //    }
-                     // }
-
-                     return Promise.all(allUpdates).then(() => {
-                        // Now make sure knex has the latest object data
-                        (allObjects || []).forEach((object) => {
-                           refreshObject(object);
-                        });
-                     });
+                     return migrateCreateSequential(
+                        allCombineFields,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 5: creating Combine FIELD :
+ABFieldCombine.migrateCreate() error:
+${strErr}
+>>>>>>>>>>>>>>>>>>>>>>`,
+                              error: err,
+                              field: item.toObj(),
+                           });
+                        }
+                     );
                   })
                   .then(() => {
                      ///
@@ -398,24 +476,23 @@ ${strErr}
                            allQueries.push(query);
                         });
 
-                     var allMigrates = [];
-                     (allQueries || []).forEach((query) => {
-                        allMigrates.push(
-                           query.migrateCreate(req, thisKnex).catch((err) => {
-                              allErrors.push({
-                                 context: "developer",
-                                 message: `>>>>>>>>>>>>>>>>>>>>>>
-Pass 3: creating QUERIES:
-ABMigration.createQuery() error:
-${err.toString()}
+                     return migrateCreateSequential(
+                        allQueries,
+                        1,
+                        (err, item) => {
+                           var strErr = `${err.code}:${err.toString()}`;
+                           allErrors.push({
+                              context: "developer",
+                              message: `>>>>>>>>>>>>>>>>>>>>>>
+Pass 6: creating QUERIES :
+query.migrateCreate() error:
+${strErr}
 >>>>>>>>>>>>>>>>>>>>>>`,
-                                 error: err,
-                              });
-                           })
-                        );
-                     });
-
-                     return Promise.all(allMigrates);
+                              error: err,
+                              query: item.toObj(),
+                           });
+                        }
+                     );
                   })
                   .then(() => {
                      // now save all the rest:
@@ -494,6 +571,67 @@ ${strErr}
                      return Promise.all(allFiles);
                   })
                   .then(() => {
+                     req.log("::: IMPORT : Saving Roles and Scopes");
+                     const SiteRole = AB.objectRole();
+                     const SiteScope = AB.objectScope();
+
+                     var allRoles = [];
+                     var allScopes = [];
+                     (data.roles || []).forEach((role) => {
+                        (role.scopes || []).forEach((s) => {
+                           let found = allScopes.find(
+                              (as) => as.uuid == s.uuid
+                           );
+                           if (!found) {
+                              allScopes.push(s);
+                           }
+                        });
+                        // In order to prevent any loss to existing
+                        // assignments, remove any .users field
+                        delete role.users;
+                        allRoles.push(role);
+                     });
+
+                     return Promise.resolve()
+                        .then(() => {
+                           // Save Scopes 1st
+                           var allScopeSaves = allScopes.map((s) =>
+                              req
+                                 .retry(() => SiteScope.model().create(s))
+                                 .catch((err) => {
+                                    let strErr = err.toString();
+                                    if (strErr.indexOf("ER_DUP_ENTRY") > -1) {
+                                       return req.retry(() =>
+                                          SiteScope.model().update(s.uuid, s)
+                                       );
+                                    }
+                                    throw err;
+                                 })
+                           );
+                           return Promise.all(allScopeSaves);
+                        })
+                        .then(() => {
+                           // Save Roles with connected ScopeIDs
+                           var allRoleSaves = allRoles.map((role) =>
+                              req
+                                 .retry(() => SiteRole.model().create(role))
+                                 .catch((err) => {
+                                    let strErr = err.toString();
+                                    if (strErr.indexOf("ER_DUP_ENTRY") > -1) {
+                                       return req.retry(() =>
+                                          SiteRole.model().update(
+                                             role.uuid,
+                                             role
+                                          )
+                                       );
+                                    }
+                                    throw err;
+                                 })
+                           );
+                           return Promise.all(allRoleSaves);
+                        });
+                  })
+                  .then(() => {
                      console.log(":::");
                      req.log("::: IMPORT : Finished");
                      console.log(":::");
@@ -519,6 +657,17 @@ ${strErr}
                         }
                      }
                      resolve(data);
+                  })
+                  .then(() => {
+                     // Change innodb_lock_wait_timeout to 1 second to avoid lock table issues
+                     return thisKnex.schema.raw(
+                        "SET GLOBAL innodb_lock_wait_timeout = 50;"
+                     );
+                  })
+                  .then(() => {
+                     return thisKnex.schema.raw(
+                        "SET SESSION innodb_lock_wait_timeout = 50;"
+                     );
                   })
                   .catch((err) => {
                      req.notify.developer(err, {});

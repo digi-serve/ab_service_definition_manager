@@ -1,0 +1,188 @@
+/**
+ * export-app
+ * our Request handler.
+ */
+
+const ABBootstrap = require("../AppBuilder/ABBootstrap");
+// {ABBootstrap}
+// responsible for initializing and returning an {ABFactory} that will work
+// with the current tenant for the incoming request.
+
+const _ = require("lodash");
+const moment = require("moment");
+
+const IgnoreRoleIDs = [
+   "dd6c2d34-0982-48b7-bc44-2456474edbea",
+   "6cc04894-a61b-4fb5-b3e5-b8c3f78bd331",
+   "e1be4d22-1d00-4c34-b205-ef84b8334b19",
+];
+// {array} The Role.ids of the default roles installed at creation.
+// we don't need to import these.
+
+module.exports = {
+   /**
+    * Key: the cote message key we respond to.
+    */
+   key: "definition_manager.export-app",
+
+   /**
+    * inputValidation
+    * define the expected inputs to this service handler:
+    * Format:
+    * "parameterName" : {
+    *    {joi.fn}   : {bool},  // performs: joi.{fn}();
+    *    {joi.fn}   : {
+    *       {joi.fn1} : true,   // performs: joi.{fn}().{fn1}();
+    *       {joi.fn2} : { options } // performs: joi.{fn}().{fn2}({options})
+    *    }
+    *    // examples:
+    *    "required" : {bool},
+    *    "optional" : {bool},
+    *
+    *    // custom:
+    *        "validation" : {fn} a function(value, {allValues hash}) that
+    *                       returns { error:{null || {new Error("Error Message")} }, value: {normalize(value)}}
+    * }
+    */
+   inputValidation: {
+      ID: { string: { uuid: true }, required: true },
+   },
+
+   /**
+    * fn
+    * our Request handler.
+    * @param {obj} req
+    *        the request object sent by the
+    *        api_sails/api/controllers/definition_manager/export-app.
+    * @param {fn} cb
+    *        a node style callback(err, results) to send data when job is finished
+    */
+   fn: function handler(req, cb) {
+      req.log("definition_manager.export-app:");
+
+      // get the AB for the current tenant
+      ABBootstrap.init(req)
+         .then(async (AB) => { // eslint-disable-line
+            try {
+               var ID = req.param("ID");
+               var app = AB.applicationByID(ID);
+               if (!app) {
+                  var errNotFound = new Error("Application not found");
+                  cb(errNotFound);
+                  return;
+               }
+
+               var date = moment().format("YYYYMMDD");
+
+               var exportData = {
+                  abVersion: "0.0.0",
+                  filename: `app_${_.replace(
+                     _.trim(app.name),
+                     " ",
+                     "_"
+                  )}_${date}`,
+                  date,
+                  definitions: [],
+               };
+               // {obj}
+               // the final output format to return to the request.
+
+               var dataHash = {};
+               // {hash}  {def.id : def }
+               // we use this to exclude any duplicate definitions. We parse this into
+               // our final list at the end.
+
+               // our upgraded export format:
+               var data = {
+                  settings: {
+                     includeSystemObjects: app.isSystemObject,
+                     // {bool}
+                  },
+                  ids: [],
+                  siteObjectConnections: {
+                     // SiteUser.id : [ ABField.ID, ],
+                     // SiteRole.id : [ ABField.ID,, ]
+                  },
+                  roles: {
+                     /* Role.id : Role.id */
+                  },
+               };
+               app.exportData(data);
+               data.ids.forEach((id) => {
+                  if (!dataHash[id]) {
+                     dataHash[id] = AB.definitionByID(id, true);
+                  }
+               });
+
+               // parse each entry in our dataHash & store it in our
+               // definitions
+               Object.keys(dataHash).forEach((k) => {
+                  exportData.definitions.push(dataHash[k]);
+               });
+
+               // copy in the siteObjectConnections
+               exportData.siteObjectConnections = {};
+               (Object.keys(data.siteObjectConnections) || []).forEach((k) => {
+                  exportData.siteObjectConnections[k] = (
+                     data.siteObjectConnections[k] || []
+                  ).filter((f) => f);
+               });
+
+               // anything we export should NOT carry with it the
+               // importedFieldID
+               var objectDefs = exportData.definitions.filter(
+                  (d) => d.type == "object"
+               );
+               objectDefs.forEach((o) => {
+                  if (o.json.importedFieldIDs) {
+                     o.json.importedFieldIDs = [];
+                  }
+               });
+
+               var roleIDs = Object.keys(data.roles || {}).filter(
+                  (rid) => IgnoreRoleIDs.indexOf(rid) == -1
+               );
+               if (roleIDs.length > 0) {
+                  const SiteRole = AB.objectRole();
+                  let list = await req.retry(() =>
+                     SiteRole.model().find({
+                        where: { uuid: roleIDs },
+                        populate: true,
+                     })
+                  );
+
+                  // clean up our entries to not try to include
+                  // current User data and redundant __relation fields
+                  (list || []).forEach((role) => {
+                     delete role.id;
+                     role.users = [];
+                     delete role.scopes__relation;
+                     (role.scopes || []).forEach((s) => {
+                        delete s.id;
+                        s.createdBy = null;
+                     });
+                  });
+                  exportData.roles = list;
+               } else {
+                  exportData.roles = [];
+               }
+
+               cb(null, exportData);
+            } catch (e) {
+               req.notify.developer(e, {
+                  context:
+                     "Service:definition_manager.export-app: Error gathering definitions",
+               });
+               var returnError = new Error("Error gathering definitions.");
+               cb(returnError);
+            }
+         })
+         .catch((err) => {
+            req.notify.developer(err, {
+               context:
+                  "Service:definition_manager.export-app: Error initializing ABFactory",
+            });
+            cb(err);
+         });
+   },
+};

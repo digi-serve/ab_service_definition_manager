@@ -5,8 +5,8 @@
 ##
 ## Docker Commands:
 ## ---------------
-## $ docker build -t digiserve/ab-definition-manager:develop .
-## $ docker push digiserve/ab-definition-manager:develop
+## $ docker build -t digiserve/ab-definition-manager:master .
+## $ docker push digiserve/ab-definition-manager:master
 ##
 
 ARG BRANCH=master

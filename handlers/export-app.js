@@ -130,9 +130,9 @@ module.exports = {
 
                // anything we export should NOT carry with it the
                // importedFieldID
-               var objectDefs = exportData.definitions.filter((d) => {
-                  d.type == "object";
-               });
+               var objectDefs = exportData.definitions.filter(
+                  (d) => d.type == "object"
+               );
                objectDefs.forEach((o) => {
                   if (o.json.importedFieldIDs) {
                      o.json.importedFieldIDs = [];

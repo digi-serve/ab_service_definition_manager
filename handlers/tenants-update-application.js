@@ -76,9 +76,9 @@ module.exports = {
       const tenantUUIDsFilterByApplication = applicationsByTenantUUID
          .filter((e) => e.results.length)
          .map((e) => e.tenantUUID);
-      const penddingImportApplication = [];
 
-      const importApplication = (tenantUUID) => {
+      // Import App and wait 10 seconds for DB connection timeout default
+      const importApplication = (tenantUUID, mS = 10000) => {
          const newReq = req;
 
          // We need the "req._tenantID" parameter to connect tenant databases not ABFactory.tenantID
@@ -102,19 +102,18 @@ module.exports = {
 
                      return;
                   }
-                  resolve();
+
+                  setTimeout(() => {
+                     resolve();
+                  }, mS);
                }
             );
          });
       };
 
       for (let i = 0; i < tenantUUIDsFilterByApplication.length; i++) {
-         penddingImportApplication.push(
-            importApplication(tenantUUIDsFilterByApplication[i])
-         );
+         await importApplication(tenantUUIDsFilterByApplication[i]);
       }
-
-      await Promise.all(penddingImportApplication);
 
       cb(null, { status: "success" });
    },

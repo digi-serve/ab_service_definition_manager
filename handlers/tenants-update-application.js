@@ -31,6 +31,7 @@ module.exports = {
     * }
     */
    inputValidation: {
+      applicationUUID: { string: true, optional: true },
       data: { object: true, required: true },
    },
 
@@ -44,41 +45,32 @@ module.exports = {
     */
    fn: async function handler(req, cb) {
       const data = req.param("data");
-
-      let applicationID = null;
-
-      for (let i = 0; i < data.definitions.length; i++)
-         if (data.definitions[i].type === "application") {
-            applicationID = data.definitions[i].id;
-
-            break;
-         }
+      const applicationUUID =
+         req.param("applicationUUID") ??
+         data.definitions.find((e) => {
+            return e.type === "application";
+         }).id;
 
       const tenantUUIDs = await getTenants(req, ["uuid"]);
 
-      const penddingGetApplicationsByTenantUUID = [];
+      const penddingGetApplicationsByTenantUUIDs = [];
 
-      for (let i = 0; i < tenantUUIDs.length; i++) {
-         penddingGetApplicationsByTenantUUID.push(
-            getApplicationsByTenantUUID(
-               req,
-               tenantUUIDs[i].uuid,
-               ["id"],
-               [applicationID]
-            )
+      tenantUUIDs.forEach((e) => {
+         penddingGetApplicationsByTenantUUIDs.push(
+            getApplicationsByTenantUUID(req, e.uuid, ["id"], [applicationUUID])
          );
-      }
+      });
 
       const applicationsByTenantUUID = await Promise.all(
-         penddingGetApplicationsByTenantUUID
+         penddingGetApplicationsByTenantUUIDs
       );
 
       const tenantUUIDsFilterByApplication = applicationsByTenantUUID
          .filter((e) => e.results.length)
          .map((e) => e.tenantUUID);
 
-      // Import App and wait 10 seconds for DB connection timeout default
-      const importApplication = (tenantUUID, mS = 10000) => {
+      // Import App
+      const importApplication = (tenantUUID) => {
          const newReq = req;
 
          // We need the "req._tenantID" parameter to connect tenant databases not ABFactory.tenantID
@@ -87,8 +79,10 @@ module.exports = {
          return new Promise((resolve, reject) => {
             newReq.serviceRequest(
                "definition_manager.json-import",
+               // the parameter "jobData"
                {
                   json: data,
+                  longRequest: true, // Tell cote to wait longer as import takes time.
                },
                (error) => {
                   if (error) {
@@ -103,18 +97,15 @@ module.exports = {
                      return;
                   }
 
-                  setTimeout(() => {
-                     resolve();
-                  }, mS);
+                  resolve();
                }
             );
          });
       };
 
-      for (let i = 0; i < tenantUUIDsFilterByApplication.length; i++) {
+      for (let i = 0; i < tenantUUIDsFilterByApplication.length; i++)
          await importApplication(tenantUUIDsFilterByApplication[i]);
-      }
 
-      cb(null, { status: "success" });
+      cb(null, { success: true });
    },
 };

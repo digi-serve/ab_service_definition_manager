@@ -66,7 +66,15 @@ module.exports = {
                applications.forEach((a) => {
                   a.exportIDs(aIDs);
                });
+
+               // NOTE: we also need to make sure all the System Objects in the definitions.
+               let systemObjects = AB.objects((o) => o.isSystemObject);
+               for (var i = 0; i < systemObjects.length; i++) {
+                  systemObjects[i].exportIDs(aIDs);
+               }
+
                hashIDs[hashKey] = aIDs;
+
                AB.cache("defs-for-role", hashIDs);
             }
 

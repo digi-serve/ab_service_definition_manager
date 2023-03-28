@@ -94,7 +94,7 @@ module.exports = {
          })
          .catch((err) => {
             // we clear the cache just in case our data was incorrect.
-            AB.cacheClear(ServiceKey);
+            // AB.cacheClear(ServiceKey);
             req.notify.developer(err, {
                context:
                   "Service:definition_manager.definitionsForRoles: Error initializing ABFactory",

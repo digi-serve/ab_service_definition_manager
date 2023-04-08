@@ -83,6 +83,25 @@ module.exports = {
                   )}_${date}`,
                   date,
                   definitions: [],
+                  files: {
+                     /* file.id : {
+                        meta: {
+                           // Wanted:
+                           created_at: createdAt
+                           updated_at: updatedAt,
+                           field: {ABField.id},
+                           object: {ABField.object.id},
+                           pathFile: ???
+                           file: {file | image}, // the name of the original file
+                           size: size
+                           uploadedBy: null
+                           type: type
+                           info: info || null
+                        },
+                        contents: "base64(contents)"
+                     }
+                     */
+                  },
                };
                // {obj}
                // the final output format to return to the request.
@@ -167,6 +186,25 @@ module.exports = {
                   exportData.roles = [];
                }
 
+               // Now lookup any docx views or ABViewImage and pull the related files:
+               let types = ["docxBuilder", "image"];
+               let fileNames = (exportData.definitions || [])
+                  .filter(
+                     (d) => d.type == "view" && types.indexOf(d.json.key) > -1
+                  )
+                  .map((f) => f.json.settings.filename)
+                  .filter((f) => f);
+
+               // Add in the ABFieldImage.defaultImage references:
+               fileNames = fileNames.concat(
+                  (exportData.definitions || [])
+                     .filter((d) => d.type == "field" && d.json.key == "image")
+                     .map((f) => f.json.settings.defaultImageUrl)
+                     .filter((f) => f)
+               );
+
+               await ExportFiles(req, fileNames, exportData.files);
+
                cb(null, exportData);
             } catch (e) {
                req.notify.developer(e, {
@@ -186,3 +224,28 @@ module.exports = {
          });
    },
 };
+
+function ExportFiles(req, list, files) {
+   return new Promise((resolve, reject) => {
+      if (list.length == 0) {
+         return resolve();
+      }
+
+      let file = list.shift();
+      req.serviceRequest(
+         "file_processor.file-export",
+         {
+            uuid: file,
+         },
+         (err, fileDef) => {
+            if (err) {
+               reject(err);
+            }
+            files[file] = fileDef;
+
+            // continue with the next one
+            ExportFiles(req, list, files).then(resolve).catch(reject);
+         }
+      );
+   });
+}

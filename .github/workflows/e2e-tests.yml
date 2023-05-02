@@ -45,4 +45,4 @@ jobs:
         if: failure()
         with:
           name: ABServices.log
-          path: ./ab/logs/ABServices.log
+          path: ./AppBuilder/logs/ABServices.log

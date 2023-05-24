@@ -98,7 +98,6 @@ module.exports = {
             req.notify.developer(err, {
                context:
                   "Service:definition_manager.definitionsForRoles: Error initializing ABFactory",
-               req,
             });
             cb(err);
          });

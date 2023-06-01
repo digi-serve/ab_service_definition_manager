@@ -684,7 +684,6 @@ ${strErr}
             req.notify.developer(err, {
                context:
                   "Service:definition_manager.json-import: Error initializing ABFactory",
-               req,
             });
             cb(err);
          });

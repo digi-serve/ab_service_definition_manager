@@ -548,6 +548,8 @@ ${strErr}
                      fileKeys.forEach((key) => {
                         var file = data.files[key];
 
+                        if (file == null) return;
+
                         allFiles.push(
                            new Promise((resolve, reject) => {
                               req.serviceRequest(

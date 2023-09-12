@@ -576,18 +576,10 @@ ${strErr}
                      req.log("::: IMPORT : Saving Roles and Scopes");
                      const SiteRole = AB.objectRole();
                      const SiteScope = AB.objectScope();
+                     const allRoles = [];
+                     const allScopes = data.scopes;
 
-                     var allRoles = [];
-                     var allScopes = [];
                      (data.roles || []).forEach((role) => {
-                        (role.scopes || []).forEach((s) => {
-                           let found = allScopes.find(
-                              (as) => as.uuid == s.uuid
-                           );
-                           if (!found) {
-                              allScopes.push(s);
-                           }
-                        });
                         // In order to prevent any loss to existing
                         // assignments, remove any .users field
                         delete role.users;
@@ -597,7 +589,7 @@ ${strErr}
                      return Promise.resolve()
                         .then(() => {
                            // Save Scopes 1st
-                           var allScopeSaves = allScopes.map((s) =>
+                           const allScopeSaves = allScopes.map((s) =>
                               req
                                  .retry(() => SiteScope.model().create(s))
                                  .catch((err) => {
@@ -614,7 +606,7 @@ ${strErr}
                         })
                         .then(() => {
                            // Save Roles with connected ScopeIDs
-                           var allRoleSaves = allRoles.map((role) =>
+                           const allRoleSaves = allRoles.map((role) =>
                               req
                                  .retry(() => SiteRole.model().create(role))
                                  .catch((err) => {

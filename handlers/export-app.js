@@ -15,6 +15,8 @@ const IgnoreRoleIDs = [
    "dd6c2d34-0982-48b7-bc44-2456474edbea",
    "6cc04894-a61b-4fb5-b3e5-b8c3f78bd331",
    "e1be4d22-1d00-4c34-b205-ef84b8334b19",
+   "320ef94a-73b5-476e-9db4-c08130c64bb8",
+   "ee52974b-5276-427f-ad4c-f29af6b5caaf",
 ];
 // {array} The Role.ids of the default roles installed at creation.
 // we don't need to import these.
@@ -62,7 +64,8 @@ module.exports = {
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
-         .then(async (AB) => { // eslint-disable-line
+         .then(async (AB) => {
+            // eslint-disable-line
             try {
                var ID = req.param("ID");
                var app = AB.applicationByID(ID);
@@ -83,6 +86,25 @@ module.exports = {
                   )}_${date}`,
                   date,
                   definitions: [],
+                  files: {
+                     /* file.id : {
+                        meta: {
+                           // Wanted:
+                           created_at: createdAt
+                           updated_at: updatedAt,
+                           field: {ABField.id},
+                           object: {ABField.object.id},
+                           pathFile: ???
+                           file: {file | image}, // the name of the original file
+                           size: size
+                           uploadedBy: null
+                           type: type
+                           info: info || null
+                        },
+                        contents: "base64(contents)"
+                     }
+                     */
+                  },
                };
                // {obj}
                // the final output format to return to the request.
@@ -144,28 +166,64 @@ module.exports = {
                );
                if (roleIDs.length > 0) {
                   const SiteRole = AB.objectRole();
-                  let list = await req.retry(() =>
+                  const roles = await req.retry(() =>
                      SiteRole.model().find({
                         where: { uuid: roleIDs },
                         populate: true,
                      })
                   );
+                  const SiteScope = AB.objectScope();
 
                   // clean up our entries to not try to include
                   // current User data and redundant __relation fields
-                  (list || []).forEach((role) => {
+                  exportData.scopes = [];
+
+                  (roles || []).forEach(async (role) => {
                      delete role.id;
+
                      role.users = [];
+
                      delete role.scopes__relation;
-                     (role.scopes || []).forEach((s) => {
+
+                     if (role.scopes.length === 0) return;
+
+                     const scopes = await req.retry(() =>
+                        SiteScope.model().find({
+                           where: { uuid: role.scopes },
+                        })
+                     );
+
+                     (scopes || []).forEach((s) => {
                         delete s.id;
+
                         s.createdBy = null;
                      });
+
+                     exportData.scopes = exportData.scopes.concat(scopes);
                   });
-                  exportData.roles = list;
+                  exportData.roles = roles;
                } else {
                   exportData.roles = [];
                }
+
+               // Now lookup any docx views or ABViewImage and pull the related files:
+               let types = ["docxBuilder", "image"];
+               let fileNames = (exportData.definitions || [])
+                  .filter(
+                     (d) => d.type == "view" && types.indexOf(d.json.key) > -1
+                  )
+                  .map((f) => f.json.settings.filename)
+                  .filter((f) => f);
+
+               // Add in the ABFieldImage.defaultImage references:
+               fileNames = fileNames.concat(
+                  (exportData.definitions || [])
+                     .filter((d) => d.type == "field" && d.json.key == "image")
+                     .map((f) => f.json.settings.defaultImageUrl)
+                     .filter((f) => f)
+               );
+
+               await ExportFiles(req, fileNames, exportData.files);
 
                cb(null, exportData);
             } catch (e) {
@@ -186,3 +244,28 @@ module.exports = {
          });
    },
 };
+
+function ExportFiles(req, list, files) {
+   return new Promise((resolve, reject) => {
+      if (list.length == 0) {
+         return resolve();
+      }
+
+      let file = list.shift();
+      req.serviceRequest(
+         "file_processor.file-export",
+         {
+            uuid: file,
+         },
+         (err, fileDef) => {
+            if (err) {
+               reject(err);
+            }
+            files[file] = fileDef;
+
+            // continue with the next one
+            ExportFiles(req, list, files).then(resolve).catch(reject);
+         }
+      );
+   });
+}

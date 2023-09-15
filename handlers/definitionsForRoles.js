@@ -66,7 +66,15 @@ module.exports = {
                applications.forEach((a) => {
                   a.exportIDs(aIDs);
                });
+
+               // NOTE: we also need to make sure all the System Objects in the definitions.
+               let systemObjects = AB.objects((o) => o.isSystemObject);
+               for (var i = 0; i < systemObjects.length; i++) {
+                  systemObjects[i].exportIDs(aIDs);
+               }
+
                hashIDs[hashKey] = aIDs;
+
                AB.cache("defs-for-role", hashIDs);
             }
 
@@ -86,11 +94,10 @@ module.exports = {
          })
          .catch((err) => {
             // we clear the cache just in case our data was incorrect.
-            AB.cacheClear(ServiceKey);
+            // AB.cacheClear(ServiceKey);
             req.notify.developer(err, {
                context:
                   "Service:definition_manager.definitionsForRoles: Error initializing ABFactory",
-               req,
             });
             cb(err);
          });

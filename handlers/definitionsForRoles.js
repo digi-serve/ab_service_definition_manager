@@ -44,6 +44,10 @@ module.exports = {
             let hashIDs = AB.cache("defs-for-role");
             if (!hashIDs) hashIDs = {};
 
+            const isSystemUser = roleIDs.filter((roleId) =>
+               AB.defaultSystemRoles().includes(roleId)
+            );
+
             var ids = [];
             // {array}
             // all the ABDefinition.id that need to be exported.
@@ -52,8 +56,8 @@ module.exports = {
             if (!hashIDs[hashKey] || hashIDs[hashKey].length == 0) {
                req.log("building ID hash");
 
-               var applications = AB.applications((a) =>
-                  a.isAccessibleForRoles(roles)
+               var applications = AB.applications(
+                  (a) => isSystemUser || a.isAccessibleForRoles(roles)
                );
 
                req.log(
@@ -103,3 +107,4 @@ module.exports = {
          });
    },
 };
+

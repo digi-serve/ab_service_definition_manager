@@ -44,9 +44,10 @@ module.exports = {
             let hashIDs = AB.cache("defs-for-role");
             if (!hashIDs) hashIDs = {};
 
-            const isSystemUser = roleIDs.filter((roleId) =>
-               AB.defaultSystemRoles().includes(roleId)
-            );
+            const isSystemUser =
+               roleIDs.filter((roleId) =>
+                  AB.defaultSystemRoles().includes(roleId)
+               ).length > 0;
 
             var ids = [];
             // {array}

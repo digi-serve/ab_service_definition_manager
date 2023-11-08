@@ -27,7 +27,7 @@ module.exports = {
     * @param {fn} cb
     *        a node style callback(err, results) to send data when job is finished
     */
-   fn: function handler(req, cb) {
+   fn: async function handler(req, cb) {
       //
       var ServiceKey = this.key;
       req.log(ServiceKey);
@@ -40,7 +40,7 @@ module.exports = {
       req.log("-- roles: --", roleIDs);
 
       ABBootstrap.init(req)
-         .then((AB) => {
+         .then(async (AB) => {
             let hashIDs = AB.cache("defs-for-role");
             if (!hashIDs) hashIDs = {};
 
@@ -88,15 +88,28 @@ module.exports = {
             req.log(
                `definition_manager.definitionsForRoles: found ${ids.length} ids to export.`
             );
-            var definitions = [];
-            ids.forEach((id) => {
-               let def = AB.definitionByID(id, true);
-               if (def) {
-                  definitions.push(def);
-               }
-            });
 
-            cb(null, definitions);
+            let stringifiedDefs = AB.cache("cached-defs");
+
+            if (stringifiedDefs == null) {
+               req.performance.mark("stringify-defs-for-role", {
+                  op: "serialize",
+               });
+
+               stringifiedDefs = await req.worker(
+                  (defs) => JSON.stringify(defs),
+                  [
+                     ids
+                        .map((id) => AB.definitionByID(id, true))
+                        .filter((def) => def != null),
+                  ]
+               );
+
+               req.performance.measure("stringify-defs-for-role");
+               AB.cache("cached-defs", stringifiedDefs);
+            }
+
+            cb(null, stringifiedDefs);
          })
          .catch((err) => {
             // we clear the cache just in case our data was incorrect.
@@ -109,4 +122,3 @@ module.exports = {
          });
    },
 };
-

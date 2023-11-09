@@ -89,14 +89,14 @@ module.exports = {
                `definition_manager.definitionsForRoles: found ${ids.length} ids to export.`
             );
 
-            let stringifiedDefs = AB.cache("cached-defs");
+            const stringifiedDefs = AB.cache("cached-defs") || {};
 
-            if (stringifiedDefs == null) {
+            if (stringifiedDefs[hashKey] == null) {
                req.performance.mark("stringify-defs-for-role", {
                   op: "serialize",
                });
 
-               stringifiedDefs = await req.worker(
+               stringifiedDefs[hashKey] = await req.worker(
                   (defs) => JSON.stringify(defs),
                   [
                      ids
@@ -109,7 +109,7 @@ module.exports = {
                AB.cache("cached-defs", stringifiedDefs);
             }
 
-            cb(null, stringifiedDefs);
+            cb(null, stringifiedDefs[hashKey]);
          })
          .catch((err) => {
             // we clear the cache just in case our data was incorrect.

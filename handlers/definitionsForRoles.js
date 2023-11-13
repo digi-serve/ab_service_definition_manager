@@ -43,76 +43,61 @@ module.exports = {
 
       try {
          const AB = await ABBootstrap.init(req);
-
-         let hashIDs = AB.cache("defs-for-role");
-         if (!hashIDs) hashIDs = {};
-
-         let ids = [];
-         // {array}
-         // all the ABDefinition.id that need to be exported.
-
+         const stringifiedDefs = AB.cache("cached-defs") || {};
          const hashKey = roleIDs.join(",");
 
-         if (!hashIDs[hashKey] || hashIDs[hashKey].length == 0) {
-            req.log("building ID hash");
-            req.performance.mark("buildIDHash");
+         if (stringifiedDefs[hashKey] != null) {
+            cb(null, stringifiedDefs[hashKey]);
 
-            const applications = AB.applications(
-               (a) =>
-                  // Check for a system user.
-                  roleIDs.filter((roleId) =>
-                     AB.defaultSystemRoles().includes(roleId)
-                  ).length > 0 || a.isAccessibleForRoles(roles)
-            );
-
-            req.log(
-               `definition_manager.definitionsForRoles: found ${applications.length} applications to export`
-            );
-
-            // This takes a long time!
-            // Cache this?
-            const aIDs = [];
-
-            applications.forEach((a) => {
-               a.exportIDs(aIDs);
-            });
-
-            // NOTE: we also need to make sure all the System Objects in the definitions.
-            AB.objects((o) => o.isSystemObject).forEach((systemObject) => {
-               systemObject.exportIDs(aIDs);
-            });
-
-            hashIDs[hashKey] = aIDs;
-
-            AB.cache("defs-for-role", hashIDs);
-            req.performance.measure("buildIDHash");
+            return;
          }
 
-         ids = hashIDs[hashKey];
+         req.log("building ID hash");
+         req.performance.mark("buildIDHash");
 
-         req.log(
-            `definition_manager.definitionsForRoles: found ${ids.length} ids to export.`
+         const isSystemUser =
+            roleIDs.filter((roleId) => AB.defaultSystemRoles().includes(roleId))
+               .length > 0;
+         const applications = AB.applications(
+            (a) => isSystemUser || a.isAccessibleForRoles(roles)
          );
 
-         const stringifiedDefs = AB.cache("cached-defs") || {};
+         req.log(
+            `definition_manager.definitionsForRoles: found ${applications.length} applications to export`
+         );
 
-         if (stringifiedDefs[hashKey] == null) {
-            req.performance.mark("stringify-defs-for-role", {
-               op: "serialize",
-            });
+         // This takes a long time!
+         // Cache this?
+         stringifiedDefs[hashKey] = [];
 
-            stringifiedDefs[hashKey] = await req.worker(
-               (defs) => JSON.stringify(defs),
-               [
-                  ids
-                     .map((id) => AB.definitionByID(id, true))
-                     .filter((def) => def != null),
-               ]
-            );
+         applications.forEach((a) => {
+            a.exportIDs(stringifiedDefs[hashKey]);
+         });
 
-            req.performance.measure("stringify-defs-for-role");
-            AB.cache("cached-defs", stringifiedDefs);
-         }
+         // NOTE: we also need to make sure all the System Objects in the definitions.
+         AB.objects((o) => o.isSystemObject).forEach((systemObject) => {
+            systemObject.exportIDs(stringifiedDefs[hashKey]);
+         });
+
+         req.performance.measure("buildIDHash");
+         req.log(
+            `definition_manager.definitionsForRoles: found ${stringifiedDefs[hashKey].length} ids to export.`
+         );
+         req.performance.mark("stringify-defs-for-role", {
+            op: "serialize",
+         });
+
+         stringifiedDefs[hashKey] = await req.worker(
+            (defs) => JSON.stringify(defs),
+            [
+               stringifiedDefs[hashKey]
+                  .map((id) => AB.definitionByID(id, true))
+                  .filter((def) => def != null),
+            ]
+         );
+
+         req.performance.measure("stringify-defs-for-role");
+         AB.cache("cached-defs", stringifiedDefs);
 
          cb(null, stringifiedDefs[hashKey]);
       } catch (error) {

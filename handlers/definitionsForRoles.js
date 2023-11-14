@@ -68,20 +68,20 @@ module.exports = {
 
          // This takes a long time!
          // Cache this?
-         stringifiedDefs[hashKey] = [];
+         const allIDs = [];
 
          applications.forEach((a) => {
-            a.exportIDs(stringifiedDefs[hashKey]);
+            a.exportIDs(allIDs);
          });
 
          // NOTE: we also need to make sure all the System Objects in the definitions.
          AB.objects((o) => o.isSystemObject).forEach((systemObject) => {
-            systemObject.exportIDs(stringifiedDefs[hashKey]);
+            systemObject.exportIDs(allIDs);
          });
 
          req.performance.measure("buildIDHash");
          req.log(
-            `definition_manager.definitionsForRoles: found ${stringifiedDefs[hashKey].length} ids to export.`
+            `definition_manager.definitionsForRoles: found ${allIDs.length} ids to export.`
          );
          req.performance.mark("stringify-defs-for-role", {
             op: "serialize",
@@ -90,7 +90,7 @@ module.exports = {
          stringifiedDefs[hashKey] = await req.worker(
             (defs) => JSON.stringify(defs),
             [
-               stringifiedDefs[hashKey]
+               allIDs
                   .map((id) => AB.definitionByID(id, true))
                   .filter((def) => def != null),
             ]

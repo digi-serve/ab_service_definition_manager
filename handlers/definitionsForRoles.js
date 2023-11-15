@@ -56,7 +56,7 @@ module.exports = {
             var hashKey = roleIDs.join(",");
             if (!hashIDs[hashKey] || hashIDs[hashKey].length == 0) {
                req.log("building ID hash");
-
+               req.performance.mark("buildIDHash");
                var applications = AB.applications(
                   (a) => isSystemUser || a.isAccessibleForRoles(roles)
                );
@@ -81,6 +81,7 @@ module.exports = {
                hashIDs[hashKey] = aIDs;
 
                AB.cache("defs-for-role", hashIDs);
+               req.performance.measure("buildIDHash");
             }
 
             ids = hashIDs[hashKey];

@@ -66,8 +66,6 @@ module.exports = {
             `definition_manager.definitionsForRoles: found ${applications.length} applications to export`
          );
 
-         // This takes a long time!
-         // Cache this?
          const allIDs = [];
 
          applications.forEach((a) => {

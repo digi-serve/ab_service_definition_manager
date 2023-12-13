@@ -166,41 +166,53 @@ module.exports = {
                );
                if (roleIDs.length > 0) {
                   const SiteRole = AB.objectRole();
-                  const roles = await req.retry(() =>
-                     SiteRole.model().find({
-                        where: { uuid: roleIDs },
-                        populate: true,
-                     })
-                  );
+                  const roles =
+                     (await req.retry(() =>
+                        SiteRole.model().find({
+                           where: { uuid: roleIDs },
+                           populate: true,
+                        })
+                     )) || [];
                   const SiteScope = AB.objectScope();
-
                   // clean up our entries to not try to include
                   // current User data and redundant __relation fields
                   exportData.scopes = [];
-
-                  (roles || []).forEach(async (role) => {
-                     delete role.id;
-
-                     role.users = [];
-
-                     delete role.scopes__relation;
-
-                     if (role.scopes.length === 0) return;
-
-                     const scopes = await req.retry(() =>
-                        SiteScope.model().find({
-                           where: { uuid: role.scopes },
-                        })
+                  const PROMISE_ALL_LIMIT = 10;
+                  let pendingArrayOfScopes = [];
+                  for (let i = 0; i < roles.length; i++) {
+                     delete roles[i].id;
+                     roles[i].users = [];
+                     delete roles[i].scopes__relation;
+                     if (roles[i].scopes.length === 0) continue;
+                     pendingArrayOfScopes.push(
+                        req.retry(() =>
+                           SiteScope.model().find({
+                              where: { uuid: roles[i].scopes },
+                           })
+                        )
                      );
-
-                     (scopes || []).forEach((s) => {
-                        delete s.id;
-
-                        s.createdBy = null;
-                     });
-
-                     exportData.scopes = exportData.scopes.concat(scopes);
-                  });
+                     if (i % PROMISE_ALL_LIMIT !== 0) continue;
+                     (await Promise.all(pendingArrayOfScopes)).forEach(
+                        (scopes) => {
+                           (scopes || []).forEach((s) => {
+                              delete s.id;
+                              s.createdBy = null;
+                           });
+                           exportData.scopes.push(...scopes);
+                        }
+                     );
+                     pendingArrayOfScopes = [];
+                  }
+                  if (pendingArrayOfScopes.length > 0)
+                     (await Promise.all(pendingArrayOfScopes)).forEach(
+                        (scopes) => {
+                           (scopes || []).forEach((s) => {
+                              delete s.id;
+                              s.createdBy = null;
+                           });
+                           exportData.scopes.push(...scopes);
+                        }
+                     );
                   exportData.roles = roles;
                } else {
                   exportData.roles = [];

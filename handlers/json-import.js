@@ -577,7 +577,7 @@ ${strErr}
                      const SiteRole = AB.objectRole();
                      const SiteScope = AB.objectScope();
                      const allRoles = [];
-                     const allScopes = data.scopes;
+                     const allScopes = data.scopes || [];
 
                      (data.roles || []).forEach((role) => {
                         // In order to prevent any loss to existing

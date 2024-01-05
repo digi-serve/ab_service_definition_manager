@@ -64,6 +64,7 @@ module.exports = {
          }
 
          cb(null, {
+            version: Application.version,
             site: {
                appbuilder: {
                   networkType: Application.networkType,

@@ -1,5 +1,5 @@
 /**
- * definitions-mobile-app
+ * definitions-app
  * Gather together the definitions for the specified Mobile App
  */
 
@@ -14,7 +14,7 @@ module.exports = {
    /**
     * Key: the cote message key we respond to.
     */
-   key: "definition_manager.definitions-mobile-app",
+   key: "definition_manager.definitions-app",
 
    /**
     * inputValidation
@@ -49,7 +49,7 @@ module.exports = {
     *        a node style callback(err, results) to send data when job is finished
     */
    fn: async function handler(req, cb) {
-      req.log("definition_manager.definitions-mobile-app:");
+      req.log("definition_manager.definitions-app:");
 
       let errorContext = "";
       try {
@@ -57,8 +57,20 @@ module.exports = {
          errorContext = "Error initializing ABFactory";
          const AB = await ABBootstrap.init(req);
 
+         // Check for Cached Definitions
+         errorContext = "Error Checking Cache";
+         const ID = req.param("ID");
+         const allAppDefs = AB.cache("defs-app") || {};
+
+         var cachedData = allAppDefs[ID];
+         if (cachedData) {
+            cb(null, cachedData);
+            return;
+         }
+
          // Gather all the App Definitions from our 'export-app' handler
-         handlerExportApp.fn(req, (err, data) => {
+         errorContext = "Error Gathering App Definitions from export-app";
+         handlerExportApp.fn(req, async (err, data) => {
             const allIDs = [];
 
             // NOTE: we also need to make sure all the System Objects in the definitions.
@@ -72,11 +84,16 @@ module.exports = {
                   .filter((def) => def != null)
             );
 
-            cb(null, data);
+            allAppDefs[ID] = await req.worker(
+               (cData) => JSON.stringify(cData),
+               [data]
+            );
+            AB.cache("defs-app", allAppDefs);
+            cb(null, allAppDefs[ID]);
          });
       } catch (err) {
          req.notify.developer(err, {
-            context: `Service:definition_manager.definitions-mobile-app: ${errorContext}`,
+            context: `Service:definition_manager.definitions-app: ${errorContext}`,
          });
          cb(err);
       }

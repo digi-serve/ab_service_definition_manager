@@ -50,15 +50,6 @@ module.exports = {
       // get the AB for the current tenant
       ABBootstrap.init(req)
          .then(async (AB) => {
-            const isSystemUser = req._user.SITE_ROLE.filter((r) =>
-               AB.defaultSystemRoles().includes(r.uuid)
-            ).length;
-            if (!isSystemUser) {
-               const err = new Error("Forbidden");
-               err.code = 403;
-               return cb(err);
-            }
-
             const objID = req.param("objID");
             const fieldID = req.param("ID");
 

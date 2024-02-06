@@ -31,9 +31,9 @@ module.exports = {
     * }
     */
    inputValidation: {
-    objID: { string: { uuid: true }, required: true },
-    ID: { string: { uuid: true }, required: true },
- },
+      objID: { string: { uuid: true }, required: true },
+      ID: { string: { uuid: true }, required: true },
+   },
 
    /**
     * fn
@@ -50,11 +50,13 @@ module.exports = {
       // get the AB for the current tenant
       ABBootstrap.init(req)
          .then(async (AB) => {
-            const isSystemUser = req._user.SITE_ROLE.filter((r) => AB.defaultSystemRoles().includes(r.uuid)).length;
+            const isSystemUser = req._user.SITE_ROLE.filter((r) =>
+               AB.defaultSystemRoles().includes(r.uuid)
+            ).length;
             if (!isSystemUser) {
-                const err = new Error("Forbidden");
-                err.code = 403;
-                return cb(err); 
+               const err = new Error("Forbidden");
+               err.code = 403;
+               return cb(err);
             }
 
             const objID = req.param("objID");
@@ -62,32 +64,36 @@ module.exports = {
 
             const object = AB.objectByID(objID);
             if (!object) {
-                const err = new Error(`ABObject not found for [${objID}]`);
-                err.code = 404;
-                return cb(err); 
+               const err = new Error(`ABObject not found for [${objID}]`);
+               err.code = 404;
+               return cb(err);
             }
 
             const field = object.fieldByID(fieldID);
             if (!field) {
-                const err = new Error(`ABField not found for [${fieldID}]`);
-                err.code = 404;
-                return cb(err);
-             }
+               const err = new Error(`ABField not found for [${fieldID}]`);
+               err.code = 404;
+               return cb(err);
+            }
 
             const dbConn = AB.Knex.connection();
 
-            req.log(`Getting Information... Object[${object.id}], Field[${field.id}]`)
+            req.log(
+               `Getting Information... Object[${object.id}], Field[${field.id}]`
+            );
 
             try {
-                const rows = (await dbConn.raw(`SHOW COLUMNS FROM \`${object.tableName}\` WHERE \`Field\` = '${field.columnName}'`))?.[0];
-                cb(null, rows?.[0]);
-            }
-            catch(err) {
-                req.notify.developer(err, {
-                    context:
-                    `Service:definition_manager.information-field: Error getting the field information. - Object[${objID}], Field[${fieldID}]`,
-                });
-                cb(err);
+               const rows = (
+                  await dbConn.raw(
+                     `SHOW COLUMNS FROM \`${object.tableName}\` WHERE \`Field\` = '${field.columnName}'`
+                  )
+               )?.[0];
+               cb(null, rows?.[0]);
+            } catch (err) {
+               req.notify.developer(err, {
+                  context: `Service:definition_manager.information-field: Error getting the field information. - Object[${objID}], Field[${fieldID}]`,
+               });
+               cb(err);
             }
          })
          .catch((err) => {

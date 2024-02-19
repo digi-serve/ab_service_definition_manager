@@ -1,5 +1,5 @@
 /**
- * information-field
+ * information-object
  * our Request handler.
  */
 
@@ -9,7 +9,7 @@ module.exports = {
    /**
     * Key: the cote message key we respond to.
     */
-   key: "definition_manager.information-field",
+   key: "definition_manager.information-object",
 
    /**
     * inputValidation
@@ -31,7 +31,6 @@ module.exports = {
     * }
     */
    inputValidation: {
-      objID: { string: { uuid: true }, required: true },
       ID: { string: { uuid: true }, required: true },
    },
 
@@ -40,19 +39,17 @@ module.exports = {
     * our Request handler.
     * @param {obj} req
     *        the request object sent by the
-    *        api_sails/api/controllers/definition_manager/information-field.
+    *        api_sails/api/controllers/definition_manager/information-object.
     * @param {fn} cb
     *        a node style callback(err, results) to send data when job is finished
     */
    fn: function handler(req, cb) {
-      req.log("definition_manager.information-field:");
+      req.log("definition_manager.information-object:");
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
          .then(async (AB) => {
-            const objID = req.param("objID");
-            const fieldID = req.param("ID");
-
+            const objID = req.param("ID");
             const object = AB.objectByID(objID);
             if (!object) {
                const err = new Error(`ABObject not found for [${objID}]`);
@@ -60,29 +57,25 @@ module.exports = {
                return cb(err);
             }
 
-            const field = object.fieldByID(fieldID);
-            if (!field) {
-               const err = new Error(`ABField not found for [${fieldID}]`);
-               err.code = 404;
-               return cb(err);
-            }
-
             const dbConn = AB.Knex.connection();
 
-            req.log(
-               `Getting Information... Object[${object.id}], Field[${field.id}]`
-            );
+            req.log(`Getting Information... Object[${object.id}]`);
 
             try {
                const rows = (
-                  await dbConn.raw(
-                     `SHOW COLUMNS FROM \`${object.tableName}\` WHERE \`Field\` = '${field.columnName}'`
-                  )
+                  await dbConn.raw(`DESCRIBE \`${object.tableName}\``)
                )?.[0];
-               cb(null, rows?.[0]);
+
+               const result = {
+                  definitionId: object.id,
+                  tableName: object.tableName,
+                  fields: rows,
+               };
+
+               cb(null, result);
             } catch (err) {
                req.notify.developer(err, {
-                  context: `Service:definition_manager.information-field: Error getting the field information. - Object[${objID}], Field[${fieldID}]`,
+                  context: `Service:definition_manager.information-object: Error getting the object information. - Object[${objID}]`,
                });
                cb(err);
             }
@@ -90,7 +83,7 @@ module.exports = {
          .catch((err) => {
             req.notify.developer(err, {
                context:
-                  "Service:definition_manager.information-field: Error initializing ABFactory",
+                  "Service:definition_manager.information-object: Error initializing ABFactory",
             });
             cb(err);
          });

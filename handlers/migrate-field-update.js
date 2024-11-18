@@ -61,6 +61,11 @@ module.exports = {
                return cb(err1);
             }
 
+            // we don't perform these for API based objects:
+            if (object.isAPI) {
+               return cb(null, { status: "success" });
+            }
+
             var id = req.param("ID");
             var field = object.fieldByID(id);
             if (!field) {

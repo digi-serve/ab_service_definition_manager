@@ -8,7 +8,7 @@
   "dependencies": {
     "@digiserve/ab-utils": "^1.8.3",
     "cote": "^1.0.3",
-    "knex": "^0.21.21",
+    "knex": "^2.4.0",
     "lodash": "^4.17.21",
     "moment": "^2.29.1",
     "objection": "github:Hiro-Nakamura/objection.js#fixDBErrors",

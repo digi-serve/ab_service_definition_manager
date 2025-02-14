@@ -5,5 +5,7 @@ module.exports = (AB) => {
    AB.cacheClear("cached-defs");
    AB.cacheClear("defs-app");
    // Store the date last updated
-   AB.cache("defs-for-role-updated", Date.now());
+   let newTimestamp = Date.now();
+   AB.cache("defs-for-role-updated", newTimestamp);
+   AB.cacheMatch("defs-mobile", newTimestamp);
 };

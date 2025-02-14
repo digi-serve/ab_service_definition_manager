@@ -1,6 +1,6 @@
 /**
- * mobile-config
- * Return the configuration data for the specified mobile app.
+ * mobile-config-settings
+ * Return the configuration (settings) data for the specified mobile app.
  */
 
 const ABBootstrap = require("../AppBuilder/ABBootstrap");
@@ -12,7 +12,7 @@ module.exports = {
    /**
     * Key: the cote message key we respond to.
     */
-   key: "definition_manager.mobile-config",
+   key: "definition_manager.mobile-config-settings",
 
    /**
     * inputValidation
@@ -47,7 +47,7 @@ module.exports = {
     *        a node style callback(err, results) to send data when job is finished
     */
    fn: async function handler(req, cb) {
-      req.log("definition_manager.mobile-config:");
+      req.log("definition_manager.mobile-config-settings:");
 
       // get the AB for the current tenant
       try {
@@ -78,7 +78,7 @@ module.exports = {
          });
       } catch (err) {
          req.notify.developer(err, {
-            context: "Service:definition_manager.mobile-config",
+            context: "Service:definition_manager.mobile-config-settings",
          });
          cb(err);
       }

@@ -1,6 +1,6 @@
 {
   "name": "definition_manager",
-  "version": "1.2.0",
+  "version": "1.2.1+p10600",
   "description": "(AppBuilder) A service to manage the definitions for a running AppBuilder platform.",
   "main": "app.js",
   "author": "Johnny Hausman",

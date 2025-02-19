@@ -1,6 +1,6 @@
 /**
  * definitions-app
- * Gather together the definitions for the specified Mobile App
+ * Gather together the definitions for the specified App
  */
 
 const ABBootstrap = require("../AppBuilder/ABBootstrap");

@@ -1,18 +1,18 @@
 {
   "name": "definition_manager",
-  "version": "1.1.52+p10427",
+  "version": "1.2.1+p10600",
   "description": "(AppBuilder) A service to manage the definitions for a running AppBuilder platform.",
   "main": "app.js",
   "author": "Johnny Hausman",
   "license": "MIT",
   "dependencies": {
-    "@digiserve/ab-utils": "^1.8.3",
+    "@digiserve/ab-utils": "^1.8.4",
     "cote": "^1.0.3",
     "knex": "^0.21.21",
     "lodash": "^4.17.21",
     "moment": "^2.29.1",
     "objection": "github:Hiro-Nakamura/objection.js#fixDBErrors",
-    "semver": "^7.6.3",
+    "semver": "^7.7.1",
     "serialize-error": "^8.1.0",
     "xml-js": "^1.6.11"
   },

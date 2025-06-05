@@ -8,6 +8,7 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 // responsible for initializing and returning an {ABFactory} that will work
 // with the current tenant for the incoming request.
 const cacheUpdate = require("../utils/cacheUpdate");
+const processSecrets = require("../utils/processSecrets");
 
 module.exports = {
    /**
@@ -58,11 +59,15 @@ module.exports = {
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
-         .then((AB) => { // eslint-disable-line
+         .then(async (AB) => { // eslint-disable-line
             // access your config settings if you need them:
 
             var id = req.param("ID");
             var values = req.param("values");
+            // Ensure secrets are saved properly
+            if (values.json.secrets || values.json.deleteSecrets) {
+               values.json = await processSecrets(values.json, AB);
+            }
 
             req.retry(() => AB.definitionUpdate(req, id, values))
                .then((definition) => {

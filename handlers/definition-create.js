@@ -8,6 +8,7 @@ const ABBootstrap = require("../AppBuilder/ABBootstrap");
 // responsible for initializing and returning an {ABFactory} that will work
 // with the current tenant for the incoming request.
 const cacheUpdate = require("../utils/cacheUpdate");
+const processSecrets = require("../utils/processSecrets");
 
 module.exports = {
    /**
@@ -55,7 +56,7 @@ module.exports = {
 
       // get the AB for the current tenant
       ABBootstrap.init(req)
-         .then((AB) => { // eslint-disable-line
+         .then(async (AB) => { // eslint-disable-line
 
             var def = {
                id: req.param("id"),
@@ -79,11 +80,15 @@ module.exports = {
                   break;
             }
 
+            if (def.json.secrets) {
+               def.json = await processSecrets(def.json, AB);
+            }
+
             var fullDefinition = null;
             // {obj} the {ABDefinition} data returned from the DB.
 
             req.retry(() => AB.definitionCreate(req, def))
-               .then((definition) => {
+               .then(async (definition) => {
                   fullDefinition = definition.toObj();
                   cacheUpdate(AB);
                   cb(null, fullDefinition);
